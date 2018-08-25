@@ -135,6 +135,163 @@ void HWR_DrawPatch(GLPatch_t *gpatch, INT32 x, INT32 y, INT32 option)
 	HWD.pfnDrawPolygon(NULL, v, 4, flags);
 }
 
+void HWR_DrawIndexPatch(GLPatch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale, INT32 option, INT32 c)
+{
+	FOutVector v[4];
+	FBITFIELD flags;
+	float cx = FIXED_TO_FLOAT(x);
+	float cy = FIXED_TO_FLOAT(y);
+	UINT8 alphalevel = ((option & V_ALPHAMASK) >> V_ALPHASHIFT);
+
+//  3--2
+//  | /|
+//  |/ |
+//  0--1
+	float dupx, dupy, fscale, fwidth, fheight;
+
+	if (alphalevel >= 10 && alphalevel < 13)
+		return;
+
+	// make patch ready in hardware cache
+	HWR_GetPatch(gpatch);
+
+	dupx = (float)vid.dupx;
+	dupy = (float)vid.dupy;
+
+	switch (option & V_SCALEPATCHMASK)
+	{
+	case V_NOSCALEPATCH:
+		dupx = dupy = 1.0f;
+		break;
+	case V_SMALLSCALEPATCH:
+		dupx = (float)vid.smalldupx;
+		dupy = (float)vid.smalldupy;
+		break;
+	case V_MEDSCALEPATCH:
+		dupx = (float)vid.meddupx;
+		dupy = (float)vid.meddupy;
+		break;
+	}
+
+	dupx = dupy = (dupx < dupy ? dupx : dupy);
+	fscale = FIXED_TO_FLOAT(pscale);
+
+	if (option & V_OFFSET)
+	{
+		cx -= (float)gpatch->leftoffset * dupx * fscale;
+		cy -= (float)gpatch->topoffset * dupy * fscale;
+	}
+	else
+	{
+		cy -= (float)gpatch->topoffset * fscale;
+		if (option & V_FLIP)
+			cx -= ((float)gpatch->width - (float)gpatch->leftoffset) * fscale;
+		else
+			cx -= (float)gpatch->leftoffset * fscale;
+	}
+
+	if (option & V_SPLITSCREEN)
+		cy /= 2;
+
+	if (!(option & V_NOSCALESTART))
+	{
+		cx = cx * dupx;
+		cy = cy * dupy;
+
+		if (!(option & V_SCALEPATCHMASK))
+		{
+			// if it's meant to cover the whole screen, black out the rest
+			// cx and cy are possibly *slightly* off from float maths
+			// This is done before here compared to software because we directly alter cx and cy to centre
+			if (cx >= -0.1f && cx <= 0.1f && SHORT(gpatch->width) == BASEVIDWIDTH && cy >= -0.1f && cy <= 0.1f && SHORT(gpatch->height) == BASEVIDHEIGHT)
+			{
+				// Need to temporarily cache the real patch to get the colour of the top left pixel
+				patch_t *realpatch = W_CacheLumpNumPwad(gpatch->wadnum, gpatch->lumpnum, PU_STATIC);
+				const column_t *column = (const column_t *)((const UINT8 *)(realpatch) + LONG((realpatch)->columnofs[0]));
+				const UINT8 *source = (const UINT8 *)(column) + 3;
+				HWR_DrawFill(0, 0, BASEVIDWIDTH, BASEVIDHEIGHT, (column->topdelta == 0xff ? 31 : source[0]));
+				Z_Free(realpatch);
+			}
+			// centre screen
+			if (vid.width != BASEVIDWIDTH * vid.dupx)
+			{
+				if (option & V_SNAPTORIGHT)
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx));
+				else if (!(option & V_SNAPTOLEFT))
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx))/2;
+			}
+			if (vid.height != BASEVIDHEIGHT * vid.dupy)
+			{
+				if ((option & (V_SPLITSCREEN|V_SNAPTOBOTTOM)) == (V_SPLITSCREEN|V_SNAPTOBOTTOM))
+					cy += ((float)vid.height/2 - ((float)BASEVIDHEIGHT/2 * dupy));
+				else if (option & V_SNAPTOBOTTOM)
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy));
+				else if (!(option & V_SNAPTOTOP))
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy))/2;
+			}
+		}
+	}
+
+	if (pscale != FRACUNIT)
+	{
+		fwidth = (float)gpatch->width * fscale * dupx;
+		fheight = (float)gpatch->height * fscale * dupy;
+	}
+	else
+	{
+		fwidth = (float)gpatch->width * dupx;
+		fheight = (float)gpatch->height * dupy;
+	}
+
+	// positions of the cx, cy, are between 0 and vid.width/vid.height now, we need them to be between -1 and 1
+	cx = -1 + (cx / (vid.width/2));
+	cy = 1 - (cy / (vid.height/2));
+
+	// fwidth and fheight are similar
+	fwidth /= vid.width / 2;
+	fheight /= vid.height / 2;
+
+	// set the polygon vertices to the right positions
+	v[0].x = v[3].x = cx;
+	v[2].x = v[1].x = cx + fwidth;
+
+	v[0].y = v[1].y = cy;
+	v[2].y = v[3].y = cy - fheight;
+
+	v[0].z = v[1].z = v[2].z = v[3].z = 1.0f;
+
+	if (option & V_FLIP)
+	{
+		v[0].sow = v[3].sow = gpatch->max_s;
+		v[2].sow = v[1].sow = 0.0f;
+	}
+	else
+	{
+		v[0].sow = v[3].sow = 0.0f;
+		v[2].sow = v[1].sow = gpatch->max_s;
+	}
+
+	v[0].tow = v[1].tow = 0.0f;
+	v[2].tow = v[3].tow = gpatch->max_t;
+
+	flags = BLENDMODE|PF_Clip|PF_Modulated|PF_NoZClip|PF_NoDepthTest;
+
+	if (option & V_WRAPX)
+		flags |= PF_ForceWrapX;
+	if (option & V_WRAPY)
+		flags |= PF_ForceWrapY;
+
+	// clip it since it is used for bunny scroll in doom I
+	FSurfaceInfo Surf;	
+	RGBA_t rgbaColour = V_GetColor(c);
+	Surf.FlatColor.s.red = (float)rgbaColour.s.red / 255;
+	Surf.FlatColor.s.green = (float)rgbaColour.s.green / 255;
+	Surf.FlatColor.s.blue = (float)rgbaColour.s.blue / 255;
+	Surf.FlatColor.s.alpha = 1;
+	
+	HWD.pfnDrawPolygon(&Surf, v, 4, flags);
+}
+
 void HWR_DrawFixedPatch(GLPatch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale, INT32 option, const UINT8 *colormap)
 {
 	FOutVector v[4];
