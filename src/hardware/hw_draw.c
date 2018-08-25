@@ -273,8 +273,8 @@ void HWR_DrawIndexPatch(GLPatch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 
 	v[0].tow = v[1].tow = 0.0f;
 	v[2].tow = v[3].tow = gpatch->max_t;
-
-	flags = BLENDMODE|PF_Clip|PF_Modulated|PF_NoZClip|PF_NoDepthTest;
+	
+	flags = BLENDMODE|PF_Clip|PF_NoZClip|PF_Modulated|PF_NoDepthTest;
 
 	if (option & V_WRAPX)
 		flags |= PF_ForceWrapX;
@@ -282,12 +282,15 @@ void HWR_DrawIndexPatch(GLPatch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 		flags |= PF_ForceWrapY;
 
 	// clip it since it is used for bunny scroll in doom I
-	FSurfaceInfo Surf;	
-	RGBA_t rgbaColour = V_GetColor(c);
+	FSurfaceInfo Surf;
+	Surf.FlatColor = V_GetColor(c);
+	Surf.FlatColor.s.alpha = 255;
+	
+	/*RGBA_t rgbaColour = V_GetColor(c);
 	Surf.FlatColor.s.red = (float)rgbaColour.s.red / 255;
 	Surf.FlatColor.s.green = (float)rgbaColour.s.green / 255;
 	Surf.FlatColor.s.blue = (float)rgbaColour.s.blue / 255;
-	Surf.FlatColor.s.alpha = 1;
+	Surf.FlatColor.s.alpha = 1;*/
 	
 	HWD.pfnDrawPolygon(&Surf, v, 4, flags);
 }
