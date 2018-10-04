@@ -132,6 +132,24 @@ void I_PauseSong(INT32 handle);
 */
 void I_ResumeSong(INT32 handle);
 
+/**	\brief Get MIDI music status
+
+	\return boolean
+*/
+boolean I_MIDIPlaying(void);
+
+/**	\brief Get general music status
+
+	\return boolean
+*/
+boolean I_MusicPlaying(void);
+
+/**	\brief Get music pause status
+
+	\return boolean
+*/
+boolean I_MusicPaused(void);
+
 //
 //  MIDI I/O
 //
@@ -205,6 +223,10 @@ void I_InitDigMusic(void);
 void I_ShutdownDigMusic(void);
 
 boolean I_SetSongSpeed(float speed);
+
+boolean I_SetMusicPosition(UINT32 position);
+
+UINT32 I_GetMusicPosition(void);
 
 boolean I_SetSongTrack(INT32 track);
 

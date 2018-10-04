@@ -107,12 +107,33 @@ void S_ChangeMusic(const char *mmusic, UINT16 mflags, boolean looping);
 // Set Speed of Music
 boolean S_SpeedMusic(float speed);
 
+// Set Position of Music
+boolean S_SetMusicPosition(UINT32 position);
+
+// Get Position of Music
+UINT32 S_GetMusicPosition(void);
+
 // Stops the music.
 void S_StopMusic(void);
 
 // Stop and resume music, during game PAUSE.
 void S_PauseAudio(void);
 void S_ResumeAudio(void);
+
+// Gets MIDI music status
+boolean S_MIDIPlaying(void);
+
+// Gets general music status
+boolean S_MusicPlaying(void);
+
+// Gets music pause status
+boolean S_MusicPaused(void);
+
+// Gets currently playing music name
+const char *S_MusicName(void);
+
+// Checks if music name exists
+boolean S_MusicExists(const char *mname, boolean checkMIDI, boolean checkDigi);
 
 //
 // Updates music & sounds

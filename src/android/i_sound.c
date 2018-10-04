@@ -74,6 +74,21 @@ void I_ResumeSong(INT32 handle)
         (void)handle;
 }
 
+boolean I_MIDIPlaying(void)
+{
+	return false;
+}
+
+boolean I_MusicPlaying(void)
+{
+	return false;
+}
+
+boolean I_MusicPaused(void)
+{
+	return false;
+}
+
 //
 //  MIDI I/O
 //
@@ -141,4 +156,15 @@ boolean I_SetSongSpeed(float speed)
 {
         (void)speed;
         return false;
+}
+
+boolean I_SetMusicPosition(UINT32 position)
+{
+        (void)position;
+        return false;
+}
+
+UINT32 I_GetMusicPosition(void)
+{
+        return 0;
 }

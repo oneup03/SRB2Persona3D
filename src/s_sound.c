@@ -37,6 +37,10 @@ extern INT32 msg_id;
 #include "r_sky.h" // skyflatnum
 #include "p_local.h" // camera info
 
+#ifdef HAVE_BLUA
+#include "lua_hook.h" // MusicChange hook
+#endif
+
 #ifdef HW3SOUND
 // 3D Sound Interface
 #include "hardware/hw3sound.h"
@@ -1252,19 +1256,28 @@ void S_ChangeMusic(const char *mmusic, UINT16 mflags, boolean looping)
 	if ((nomidimusic || music_disabled) && (nodigimusic || digital_disabled))
 		return;
 
+	char newmusic[7];
+#ifdef HAVE_BLUA
+	if(LUAh_MusicChange(music_name, mmusic, newmusic, &mflags, &looping))
+		return;
+#else
+	strncpy(newmusic, mmusic, 7);	
+#endif
+	newmusic[6] = 0;
+
 	// No Music (empty string)
-	if (mmusic[0] == 0)
+	if (newmusic[0] == 0)
 	{
 		S_StopMusic();
 		return;
 	}
 
-	if (strncmp(music_name, mmusic, 6))
+	if (strncmp(music_name, newmusic, 6))
 	{
 		S_StopMusic(); // shutdown old music
-		if (!S_DigMusic(mmusic, looping) && !S_MIDIMusic(mmusic, looping))
+		if (!S_DigMusic(newmusic, looping) && !S_MIDIMusic(newmusic, looping))
 		{
-			CONS_Alert(CONS_ERROR, M_GetText("Music lump %.6s not found!\n"), mmusic);
+			CONS_Alert(CONS_ERROR, M_GetText("Music lump %.6s not found!\n"), newmusic);
 			return;
 		}
 	}
@@ -1274,6 +1287,16 @@ void S_ChangeMusic(const char *mmusic, UINT16 mflags, boolean looping)
 boolean S_SpeedMusic(float speed)
 {
 	return I_SetSongSpeed(speed);
+}
+
+boolean S_SetMusicPosition(UINT32 position)
+{
+	return I_SetMusicPosition(position);
+}
+
+UINT32 S_GetMusicPosition(void)
+{
+	return I_GetMusicPosition();
 }
 
 void S_StopMusic(void)
@@ -1430,4 +1453,32 @@ void S_ResumeAudio(void)
 
 	// resume cd music
 	I_ResumeCD();
+}
+
+boolean S_MIDIPlaying(void)
+{
+	return I_MIDIPlaying();
+}
+
+boolean S_MusicPlaying(void)
+{
+	return I_MusicPlaying();
+}
+
+boolean S_MusicPaused(void)
+{
+	return I_MusicPaused();
+}
+
+const char *S_MusicName(void)
+{
+	return music_name;
+}
+
+boolean S_MusicExists(const char *mname, boolean checkMIDI, boolean checkDigi)
+{
+	return (
+		(checkDigi ? W_CheckNumForName(va("O_%s", mname)) != LUMPERROR : false)
+		|| (checkMIDI ? W_CheckNumForName(va("D_%s", mname)) != LUMPERROR : false)
+	);
 }

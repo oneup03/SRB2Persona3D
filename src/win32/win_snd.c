@@ -470,6 +470,24 @@ void I_ResumeSong(INT32 handle)
 		FMR_MUSIC(FMOD_Channel_SetPaused(music_channel, false));
 }
 
+boolean I_MIDIPlaying(void)
+{
+	return midimode && music_stream;
+}
+
+boolean I_MusicPlaying(void)
+{
+	return (boolean)music_stream;
+}
+
+boolean I_MusicPaused(void)
+{
+	boolean fmpaused = false;
+	if (music_stream)
+		FMOD_Channel_GetPaused(music_channel, &fmpaused);
+	return fmpaused;
+}
+
 void I_InitDigMusic(void)
 {
 }
@@ -756,6 +774,40 @@ boolean I_SetSongSpeed(float speed)
 		FMR_MUSIC(e);
 
 	return true;
+}
+
+boolean I_SetMusicPosition(UINT32 position)
+{
+	if(midimode)
+		// Dummy out; this works for some MIDI, but not others.
+		// SDL does not support this for any MIDI.
+		return false;
+	FMOD_RESULT e;
+	e = FMOD_Channel_SetPosition(music_channel, position, FMOD_TIMEUNIT_MS);
+	if (e == FMOD_OK)
+		return true;
+	else if (e == FMOD_ERR_UNSUPPORTED // Only music modules, numbnuts!
+			|| e == FMOD_ERR_INVALID_POSITION) // Out-of-bounds!
+		return false;
+	else // Congrats, you horribly broke it somehow
+	{
+		FMR_MUSIC(e);
+		return false;
+	}
+}
+
+UINT32 I_GetMusicPosition(void)
+{
+	if(midimode)
+		// Dummy out because unsupported, even though FMOD does this correctly.
+		return 0;
+	FMOD_RESULT e;
+	unsigned int fmposition = 0;
+	e = FMOD_Channel_GetPosition(music_channel, &fmposition, FMOD_TIMEUNIT_MS);
+	if (e == FMOD_OK)
+		return (UINT32)fmposition;
+	else
+		return 0;
 }
 
 boolean I_SetSongTrack(INT32 track)

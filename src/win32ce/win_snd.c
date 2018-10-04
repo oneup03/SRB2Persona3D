@@ -1769,6 +1769,31 @@ void I_UnRegisterSong(INT32 handle)
 #endif
 }
 
+boolean I_MIDIPlaying(void)
+{
+	return bMusicStarted;
+}
+
+boolean I_MusicPlaying(void)
+{
+	if(fmus) 
+		return FSOUND_IsPlaying(fsoundchannel);
+	else if(mod)
+		return FMUSIC_IsPlaying(mod);
+	else
+		return bMusicStarted;
+}
+
+boolean I_MusicPaused(void)
+{
+	if(fmus) 
+		return FSOUND_GetPaused(fsoundchannel);
+	else if(mod)
+		return FMUSIC_GetPaused(mod);
+	else
+		return bMusicStarted;
+}
+
 int I_SetSongSpeed(unsigned int speed)
 {
 #ifdef FMODSOUND
@@ -1807,6 +1832,41 @@ int I_SetSongSpeed(unsigned int speed)
 	(void)speed;
 #endif
 	return 0;
+}
+
+boolean I_SetMusicPosition(UINT32 position)
+{
+	if (fmus)
+	{
+		if (FSOUND_IsPlaying(fsoundchannel)
+		&& !FSOUND_SetCurrentPosition(fsoundchannel,(int)position/1000*fsoundfreq))
+		{
+			if (devparm)
+				CONS_Printf("FMOD(SetMusicPosition,FSOUND_SetCurrentPosition): %s\n", FMOD_ErrorString(FSOUND_GetError()));
+			return 0;
+		}
+		else
+			return 1;
+	}
+	return 0;
+	// else mod
+	// else midi
+}
+
+UINT32 I_GetMusicPosition(void)
+{
+	if (fmus)
+	{
+		if (FSOUND_IsPlaying(fsoundchannel))
+		{
+			UINT32 fmPosition = FSOUND_GetCurrentPosition(fsoundchannel);
+			return fmPosition/fsoundfreq*1000;
+		}
+		return 0;
+	}
+	return 0;
+	// else mod
+	// else midi
 }
 
 // Special FMOD support Tails 11-21-2002
