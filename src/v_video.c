@@ -535,6 +535,210 @@ void V_DrawFixedPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t 
 	}
 }
 
+// Draws a patch scaled to arbitrary size and remapped to a single palette color index.
+void V_DrawIndexPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t *patch, INT32 c)
+{
+	UINT8 (*patchdrawfunc)(const UINT8*, const UINT8*, fixed_t);
+	UINT32 alphalevel = 0;
+	boolean flip = false;
+
+	fixed_t col, ofs, colfrac, rowfrac, fdup;
+	INT32 dupx, dupy;
+	const column_t *column;
+	UINT8 *desttop, *dest, *deststart, *destend;
+	const UINT8 *source, *deststop;
+	fixed_t pwidth; // patch width
+	fixed_t offx = 0; // x offset
+
+	if (rendermode == render_none)
+		return;
+
+#ifdef HWRENDER
+	// oh please
+	if (rendermode != render_soft && !con_startup)
+	{
+		HWR_DrawIndexPatch((GLPatch_t *)patch, x, y, pscale, scrn, c);
+		return;
+	}
+#endif
+
+	patchdrawfunc = standardpdraw;
+
+	v_translevel = NULL;
+	if ((alphalevel = ((scrn & V_ALPHAMASK) >> V_ALPHASHIFT)))
+	{
+		if (alphalevel == 13)
+			alphalevel = hudminusalpha[cv_translucenthud.value];
+		else if (alphalevel == 14)
+			alphalevel = 10 - cv_translucenthud.value;
+		else if (alphalevel == 15)
+			alphalevel = hudplusalpha[cv_translucenthud.value];
+
+		if (alphalevel >= 10)
+			return; // invis
+	}
+	if (alphalevel)
+	{
+		v_translevel = transtables + ((alphalevel-1)<<FF_TRANSSHIFT);
+		patchdrawfunc = translucentpdraw;
+	}
+
+	v_colormap = NULL;
+
+	dupx = vid.dupx;
+	dupy = vid.dupy;
+	if (scrn & V_SCALEPATCHMASK) switch ((scrn & V_SCALEPATCHMASK) >> V_SCALEPATCHSHIFT)
+	{
+		case 1: // V_NOSCALEPATCH
+			dupx = dupy = 1;
+			break;
+		case 2: // V_SMALLSCALEPATCH
+			dupx = vid.smalldupx;
+			dupy = vid.smalldupy;
+			break;
+		case 3: // V_MEDSCALEPATCH
+			dupx = vid.meddupx;
+			dupy = vid.meddupy;
+			break;
+		default:
+			break;
+	}
+
+	// only use one dup, to avoid stretching (har har)
+	dupx = dupy = (dupx < dupy ? dupx : dupy);
+	fdup = FixedMul(dupx<<FRACBITS, pscale);
+	colfrac = FixedDiv(FRACUNIT, fdup);
+	rowfrac = FixedDiv(FRACUNIT, fdup);
+
+	if (scrn & V_OFFSET) // Crosshair shit
+	{
+		y -= FixedMul((SHORT(patch->topoffset)*dupy)<<FRACBITS,  pscale);
+		x -= FixedMul((SHORT(patch->leftoffset)*dupx)<<FRACBITS, pscale);
+	}
+	else
+	{
+		y -= FixedMul(SHORT(patch->topoffset)<<FRACBITS, pscale);
+
+		if (scrn & V_FLIP)
+		{
+			flip = true;
+			x -= FixedMul((SHORT(patch->width) - SHORT(patch->leftoffset))<<FRACBITS, pscale);
+		}
+		else
+			x -= FixedMul(SHORT(patch->leftoffset)<<FRACBITS, pscale);
+	}
+
+	if (scrn & V_SPLITSCREEN)
+		y>>=1;
+
+	desttop = screens[scrn&V_PARAMMASK];
+
+	if (!desttop)
+		return;
+
+	deststop = desttop + vid.rowbytes * vid.height;
+
+	if (scrn & V_NOSCALESTART)
+	{
+		x >>= FRACBITS;
+		y >>= FRACBITS;
+		desttop += (y*vid.width) + x;
+	}
+	else
+	{
+		x = FixedMul(x,dupx<<FRACBITS);
+		y = FixedMul(y,dupy<<FRACBITS);
+		x >>= FRACBITS;
+		y >>= FRACBITS;
+		desttop += (y*vid.width) + x;
+
+		// Center it if necessary
+		if (!(scrn & V_SCALEPATCHMASK))
+		{
+			if (vid.width != BASEVIDWIDTH * dupx)
+			{
+				// dupx adjustments pretend that screen width is BASEVIDWIDTH * dupx,
+				// so center this imaginary screen
+				if (scrn & V_SNAPTORIGHT)
+					desttop += (vid.width - (BASEVIDWIDTH * dupx));
+				else if (!(scrn & V_SNAPTOLEFT))
+					desttop += (vid.width - (BASEVIDWIDTH * dupx)) / 2;
+			}
+			if (vid.height != BASEVIDHEIGHT * dupy)
+			{
+				// same thing here
+				if ((scrn & (V_SPLITSCREEN|V_SNAPTOBOTTOM)) == (V_SPLITSCREEN|V_SNAPTOBOTTOM))
+					desttop += (vid.height/2 - (BASEVIDHEIGHT/2 * dupy)) * vid.width;
+				else if (scrn & V_SNAPTOBOTTOM)
+					desttop += (vid.height - (BASEVIDHEIGHT * dupy)) * vid.width;
+				else if (!(scrn & V_SNAPTOTOP))
+					desttop += (vid.height - (BASEVIDHEIGHT * dupy)) * vid.width / 2;
+			}
+			// if it's meant to cover the whole screen, black out the rest
+			if (x == 0 && SHORT(patch->width) == BASEVIDWIDTH && y == 0 && SHORT(patch->height) == BASEVIDHEIGHT)
+			{
+				column = (const column_t *)((const UINT8 *)(patch) + LONG(patch->columnofs[0]));
+				source = (const UINT8 *)(column) + 3;
+				V_DrawFill(0, 0, BASEVIDWIDTH, BASEVIDHEIGHT, (column->topdelta == 0xff ? 31 : source[0]));
+			}
+		}
+	}
+
+	if (pscale != FRACUNIT) // scale width properly
+	{
+		pwidth = SHORT(patch->width)<<FRACBITS;
+		pwidth = FixedMul(pwidth, pscale);
+		pwidth = FixedMul(pwidth, dupx<<FRACBITS);
+		pwidth >>= FRACBITS;
+	}
+	else
+		pwidth = SHORT(patch->width) * dupx;
+
+	deststart = desttop;
+	destend = desttop + pwidth;
+
+	for (col = 0; (col>>FRACBITS) < SHORT(patch->width); col += colfrac, ++offx, desttop++)
+	{
+		INT32 topdelta, prevdelta = -1;
+		if (flip) // offx is measured from right edge instead of left
+		{
+			if (x+pwidth-offx < 0) // don't draw off the left of the screen (WRAP PREVENTION)
+				break;
+			if (x+pwidth-offx >= vid.width) // don't draw off the right of the screen (WRAP PREVENTION)
+				continue;
+		}
+		else
+		{
+			if (x+offx < 0) // don't draw off the left of the screen (WRAP PREVENTION)
+				continue;
+			if (x+offx >= vid.width) // don't draw off the right of the screen (WRAP PREVENTION)
+				break;
+		}
+		column = (const column_t *)((const UINT8 *)(patch) + LONG(patch->columnofs[col>>FRACBITS]));
+
+		while (column->topdelta != 0xff)
+		{
+			topdelta = column->topdelta;
+			if (topdelta <= prevdelta)
+				topdelta += prevdelta;
+			prevdelta = topdelta;
+			source = (const UINT8 *)(column) + 3;
+			dest = desttop;
+			if (flip)
+				dest = deststart + (destend - desttop);
+			dest += FixedInt(FixedMul(topdelta<<FRACBITS,fdup))*vid.width;
+
+			for (ofs = 0; dest < deststop && (ofs>>FRACBITS) < column->length; ofs += rowfrac)
+			{
+				if (dest >= screens[scrn&V_PARAMMASK]) // don't draw off the top of the screen (CRASH PREVENTION)
+					*dest = c; //patchdrawfunc(dest, c, ofs);
+				dest += vid.width;
+			}
+			column = (const column_t *)((const UINT8 *)column + column->length + 4);
+		}
+	}
+}
+
 // Draws a patch cropped and scaled to arbitrary size.
 void V_DrawCroppedPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t *patch, fixed_t sx, fixed_t sy, fixed_t w, fixed_t h)
 {
