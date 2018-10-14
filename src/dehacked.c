@@ -1860,7 +1860,6 @@ static void readframe(MYFILE *f, INT32 num)
 	char *word1;
 	char *word2 = NULL;
 	char *tmp;
-	INT32 j;
 
 	do
 	{
@@ -1874,16 +1873,6 @@ static void readframe(MYFILE *f, INT32 num)
 				*tmp = '\0';
 			if (s == tmp)
 				continue; // Skip comment lines, but don't break.
-
-			for (j = 0; s[j] != '\n'; j++)
-			{
-				if (s[j] == '=')
-				{
-					j += 2;
-					j = atoi(&s[j]);
-					break;
-				}
-			}
 
 			word1 = strtok(s, " ");
 			if (word1)
@@ -6645,7 +6634,7 @@ static const char *const MOBJFLAG_LIST[] = {
 	"SHOOTABLE",
 	"NOSECTOR",
 	"NOBLOCKMAP",
-	"AMBUSH",
+	"PAPERCOLLISION",
 	"PUSHABLE",
 	"BOSS",
 	"SPAWNCEILING",
@@ -6703,6 +6692,7 @@ static const char *const MOBJFLAG2_LIST[] = {
 	"BOSSNOTRAP",	// No Egg Trap after boss
 	"BOSSFLEE",		// Boss is fleeing!
 	"BOSSDEAD",		// Boss is dead! (Not necessarily fleeing, if a fleeing point doesn't exist.)
+	"AMBUSH",       // Alternate behaviour typically set by MTF_AMBUSH
 	NULL
 };
 
@@ -6995,6 +6985,7 @@ struct {
 
 	// Frame settings
 	{"FF_FRAMEMASK",FF_FRAMEMASK},
+	{"FF_PAPERSPRITE",FF_PAPERSPRITE},
 	{"FF_ANIMATE",FF_ANIMATE},
 	{"FF_FULLBRIGHT",FF_FULLBRIGHT},
 	{"FF_TRANSMASK",FF_TRANSMASK},
