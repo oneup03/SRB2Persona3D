@@ -134,8 +134,9 @@ static CV_PossibleValue_t backpic_cons_t[] = {{0, "translucent"}, {1, "picture"}
 static consvar_t cons_backpic = {"con_backpic", "translucent", CV_SAVE, backpic_cons_t, NULL, 0, NULL, NULL, 0, 0, NULL};
 
 static CV_PossibleValue_t backcolor_cons_t[] = {{0, "White"}, 	{1, "Gray"},	{2, "Brown"},
-												{3, "Red"},		{4, "Orange"},	{5, "Yellow"},
-												{6, "Green"},	{7, "Blue"},	{8,	"Cyan"},
+												{3, "Pink"},	{4, "Red"},		{5, "Orange"},
+												{6, "Yellow"},	{7, "Green"},	{8, "Cyan"},
+												{9, "Blue"},	{10, "Purple"},	{11, "Lavender"}												
 												{0, NULL}};
 consvar_t cons_backcolor = {"con_backcolor", "Green", CV_CALL|CV_SAVE, backcolor_cons_t, CONS_backcolor_Change, 0, NULL, NULL, 0, 0, NULL};
 
@@ -252,12 +253,16 @@ void CON_SetupBackColormap(void)
 		case 0:		palindex = 15; 	break; // White
 		case 1:		palindex = 31;	break; // Gray
 		case 2:		palindex = 63;	break; // Brown
-		case 3:		palindex = 143;	break; // Red
-		case 4:		palindex = 95;	break; // Orange
-		case 5:		palindex = 111;	break; // Yellow
-		case 6:		palindex = 175;	break; // Green
-		case 7:		palindex = 239;	break; // Blue
+		case 3:		palindex = 127	break; // Pink
+		case 4:		palindex = 143;	break; // Red
+		case 5:		palindex = 95;	break; // Orange
+		case 6:		palindex = 111;	break; // Yellow
+		case 7:		palindex = 175;	break; // Green
 		case 8:		palindex = 219;	break; // Cyan
+		case 9:		palindex = 239;	break; // Blue
+		case 10:	palindex = 199; break; // Purple
+		case 11:	palindex = 255; break; // Lavender
+		
 		// Default green
 		default:	palindex = 175; break;
 }

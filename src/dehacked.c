@@ -8189,6 +8189,8 @@ static inline int lib_getenum(lua_State *L)
 	// DYNAMIC variables too!!
 	// Try not to add anything that would break netgames or timeattack replays here.
 	// You know, like consoleplayer, displayplayer, secondarydisplayplayer, or gametime.
+	// 	Lat:		   ^^^^^^^^^^ EXCUSE ME BUT WHY?
+	
 	if (fastcmp(word,"gamemap")) {
 		lua_pushinteger(L, gamemap);
 		return 1;
@@ -8260,6 +8262,16 @@ static inline int lib_getenum(lua_State *L)
 			return 0;
 		LUA_PushUserdata(L, &players[serverplayer], META_PLAYER);
 		return 1;
+	} else if (fastcmp(word,"consoleplayer")) {
+		if (!playeringame[consoleplayer])
+			return 0;
+		LUA_PushUserdata(L, &players[consoleplayer], META_PLAYER);
+		return 1;
+	} else if (fastcmp(word,"displayplayer")) {
+		if (!playeringame[displayplayer])
+			return 0;
+		LUA_PushUserdata(L, &players[displayplayer], META_PLAYER);
+		return 1;	
 	} else if (fastcmp(word,"admin")) {
 		if (!playeringame[adminplayer] || adminplayer == serverplayer)
 			return 0;
