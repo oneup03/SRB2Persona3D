@@ -1197,13 +1197,13 @@ void G_Controldefault(void)
 	gamecontrol[gc_firenormal ][0] = 'c';
 	gamecontrol[gc_tossflag   ][0] = '\'';
 	gamecontrol[gc_tossflag   ][1] = KEY_JOY1+0; // A
-	gamecontrol[gc_use        ][0] = KEY_LSHIFT;
+	gamecontrol[gc_use        ][0] = 'x';
 	gamecontrol[gc_use        ][1] = KEY_JOY1+4; // LB
 	gamecontrol[gc_camtoggle  ][0] = 'v';
 	gamecontrol[gc_camtoggle  ][1] = KEY_HAT1+0; // D-Pad Up
 	gamecontrol[gc_camleft    ][0] = '[';
 	gamecontrol[gc_camright   ][0] = ']';
-	gamecontrol[gc_camreset   ][0] = 'r';
+	gamecontrol[gc_camreset   ][0] = 'c';
 	gamecontrol[gc_camreset   ][1] = KEY_JOY1+3; // Y
 	gamecontrol[gc_lookup     ][0] = KEY_UPARROW;
 	gamecontrol[gc_lookdown   ][0] = KEY_DOWNARROW;
@@ -1215,7 +1215,7 @@ void G_Controldefault(void)
 	gamecontrol[gc_scores     ][0] = KEY_TAB;
 	gamecontrol[gc_scores     ][1] = KEY_HAT1+3; // D-Pad Right
 	gamecontrol[gc_jump       ][0] = KEY_SPACE;
-	gamecontrol[gc_jump       ][1] = KEY_JOY1+5; // RB
+	gamecontrol[gc_jump       ][1] = KEY_JOY1+0; // A KEY_JOY1+5; // RB
 	gamecontrol[gc_console    ][0] = KEY_CONSOLE;
 	gamecontrol[gc_pause      ][0] = 'p';
 	gamecontrol[gc_pause      ][1] = KEY_JOY1+6; // Back

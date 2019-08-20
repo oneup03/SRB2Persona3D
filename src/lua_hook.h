@@ -43,11 +43,7 @@ enum hook {
 	hook_PlayerMsg,
 	hook_HurtMsg,
 	hook_PlayerSpawn,
-<<<<<<< HEAD
-	hook_MusicChange,
-=======
 	hook_PlayerQuit,
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 
 	hook_MAX // last hook
 };
@@ -82,10 +78,6 @@ boolean LUAh_LinedefExecute(line_t *line, mobj_t *mo, sector_t *sector); // Hook
 boolean LUAh_PlayerMsg(int source, int target, int flags, char *msg); // Hook for chat messages
 boolean LUAh_HurtMsg(player_t *player, mobj_t *inflictor, mobj_t *source); // Hook for hurt messages
 #define LUAh_PlayerSpawn(player) LUAh_PlayerHook(player, hook_PlayerSpawn) // Hook for G_SpawnPlayer
-<<<<<<< HEAD
-boolean LUAh_MusicChange(const char *oldname, const char *newname, char *newmusic, UINT16 *mflags, boolean *looping); // Hook for music changes
-=======
 void LUAh_PlayerQuit(player_t *plr, int reason); // Hook for player quitting
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 
 #endif

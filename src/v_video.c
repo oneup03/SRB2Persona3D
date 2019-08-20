@@ -549,7 +549,7 @@ void V_DrawFixedPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t 
 // Draws a patch scaled to arbitrary size and remapped to a single palette color index.
 void V_DrawIndexPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t *patch, INT32 c)
 {
-	UINT8 (*patchdrawfunc)(const UINT8*, const UINT8*, fixed_t);
+	//UINT8 (*patchdrawfunc)(const UINT8*, const UINT8*, fixed_t);
 	UINT32 alphalevel = 0;
 	boolean flip = false;
 
@@ -573,7 +573,7 @@ void V_DrawIndexPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t 
 	}
 #endif
 
-	patchdrawfunc = standardpdraw;
+	//patchdrawfunc = standardpdraw;
 
 	v_translevel = NULL;
 	if ((alphalevel = ((scrn & V_ALPHAMASK) >> V_ALPHASHIFT)))
@@ -591,7 +591,7 @@ void V_DrawIndexPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t 
 	if (alphalevel)
 	{
 		v_translevel = transtables + ((alphalevel-1)<<FF_TRANSSHIFT);
-		patchdrawfunc = translucentpdraw;
+		//patchdrawfunc = translucentpdraw;
 	}
 
 	v_colormap = NULL;
@@ -742,7 +742,14 @@ void V_DrawIndexPatch(fixed_t x, fixed_t y, fixed_t pscale, INT32 scrn, patch_t 
 			for (ofs = 0; dest < deststop && (ofs>>FRACBITS) < column->length; ofs += rowfrac)
 			{
 				if (dest >= screens[scrn&V_PARAMMASK]) // don't draw off the top of the screen (CRASH PREVENTION)
-					*dest = c; //patchdrawfunc(dest, c, ofs);
+				{
+					// we handle things differently since we already know the color!
+					if (alphalevel)
+						*dest = *(v_translevel + ( ((UINT8)c<<8) + (*dest&0xff)));
+					else
+						*dest = c;
+				}
+					 //patchdrawfunc(dest, (const UINT8 *)c, ofs);
 				dest += vid.width;
 			}
 			column = (const column_t *)((const UINT8 *)column + column->length + 4);

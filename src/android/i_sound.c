@@ -81,31 +81,10 @@ boolean I_SongPlaying(void)
 	return false;
 }
 
-<<<<<<< HEAD
-boolean I_MIDIPlaying(void)
-{
-	return false;
-}
-
-boolean I_MusicPlaying(void)
-{
-	return false;
-}
-
-boolean I_MusicPaused(void)
-{
-	return false;
-}
-
-//
-//  MIDI I/O
-//
-=======
 boolean I_SongPaused(void)
 {
 	return false;
 }
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 
 /// ------------------------
 //  MUSIC EFFECTS
@@ -232,15 +211,4 @@ boolean I_FadeInPlaySong(UINT32 ms, boolean looping)
         (void)ms;
         (void)looping;
         return false;
-}
-
-boolean I_SetMusicPosition(UINT32 position)
-{
-        (void)position;
-        return false;
-}
-
-UINT32 I_GetMusicPosition(void)
-{
-        return 0;
 }

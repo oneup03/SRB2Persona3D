@@ -8339,7 +8339,6 @@ static inline int lib_getenum(lua_State *L)
 			return 0;
 		LUA_PushUserdata(L, &players[serverplayer], META_PLAYER);
 		return 1;
-<<<<<<< HEAD
 	} else if (fastcmp(word,"consoleplayer")) {
 		if (!playeringame[consoleplayer])
 			return 0;
@@ -8350,13 +8349,9 @@ static inline int lib_getenum(lua_State *L)
 			return 0;
 		LUA_PushUserdata(L, &players[displayplayer], META_PLAYER);
 		return 1;	
-	} else if (fastcmp(word,"admin")) {
-		if (!playeringame[adminplayer] || adminplayer == serverplayer)
-=======
 	} else if (fastcmp(word,"admin")) { // BACKWARDS COMPATIBILITY HACK: This was replaced with IsPlayerAdmin(), but some 2.1 Lua scripts still use the admin variable. It now points to the first admin player in the array.
 		LUA_Deprecated(L, "admin", "IsPlayerAdmin(player)");
 		if (!playeringame[adminplayers[0]] || IsPlayerAdmin(serverplayer))
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 			return 0;
 		LUA_PushUserdata(L, &players[adminplayers[0]], META_PLAYER);
 		return 1;

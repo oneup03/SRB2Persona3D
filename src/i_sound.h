@@ -144,31 +144,7 @@ boolean I_SongPaused(void);
 //  MUSIC EFFECTS
 /// ------------------------
 
-<<<<<<< HEAD
-/**	\brief Get MIDI music status
-
-	\return boolean
-*/
-boolean I_MIDIPlaying(void);
-
-/**	\brief Get general music status
-
-	\return boolean
-*/
-boolean I_MusicPlaying(void);
-
-/**	\brief Get music pause status
-
-	\return boolean
-*/
-boolean I_MusicPaused(void);
-
-//
-//  MIDI I/O
-//
-=======
 boolean I_SetSongSpeed(float speed);
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 
 /// ------------------------
 //  MUSIC SEEKING
@@ -234,22 +210,7 @@ void I_StopSong(void);
 */
 void I_PauseSong(void);
 
-<<<<<<< HEAD
-boolean I_SetSongSpeed(float speed);
-
-boolean I_SetMusicPosition(UINT32 position);
-
-UINT32 I_GetMusicPosition(void);
-
-boolean I_SetSongTrack(INT32 track);
-
-/**	\brief The I_StartDigSong function
-
-	\param	musicname	music lump name
-	\param	looping	if true, loop the song
-=======
 /**	\brief	RESUME game handling
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 
 	\param	handle	song handle
 

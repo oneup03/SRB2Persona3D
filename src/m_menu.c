@@ -962,42 +962,34 @@ static menuitem_t OP_P2ControlsMenu[] =
 
 static menuitem_t OP_ControlListMenu[] =
 {
-	{IT_SUBMENU | IT_STRING, NULL, "Movement Controls...",      &OP_MoveControlsDef,   10},
-	{IT_SUBMENU | IT_STRING, NULL, "Multiplayer Controls...",   &OP_MPControlsDef,     20},
-	{IT_SUBMENU | IT_STRING, NULL, "Miscellaneous Controls...", &OP_MiscControlsDef,   30},
+	{IT_SUBMENU | IT_STRING, NULL, "Movement Controls...",      &OP_MoveControlsDef,   15},
+	//{IT_SUBMENU | IT_STRING, NULL, "Multiplayer Controls...",   &OP_MPControlsDef,     20},
+	{IT_SUBMENU | IT_STRING, NULL, "Miscellaneous Controls...", &OP_MiscControlsDef,   25},
 };
 
 static menuitem_t OP_MoveControlsMenu[] =
 {
 	{IT_HEADER, NULL, "  Movement", NULL, 0},
-	{IT_CALL | IT_STRING2, NULL, "Move Forward",     M_ChangeControl, gc_forward     },
-	{IT_CALL | IT_STRING2, NULL, "Move Backward",    M_ChangeControl, gc_backward    },
-	{IT_CALL | IT_STRING2, NULL, "Move Left",        M_ChangeControl, gc_strafeleft  },
-	{IT_CALL | IT_STRING2, NULL, "Move Right",       M_ChangeControl, gc_straferight },
-	{IT_CALL | IT_STRING2, NULL, "Jump",             M_ChangeControl, gc_jump      },
-	{IT_CALL | IT_STRING2, NULL, "Spin",             M_ChangeControl, gc_use     },
-	{IT_HEADER, NULL, "  Camera", NULL, 0},
-	{IT_CALL | IT_STRING2, NULL, "Look Up",        M_ChangeControl, gc_lookup      },
-	{IT_CALL | IT_STRING2, NULL, "Look Down",      M_ChangeControl, gc_lookdown    },
+	{IT_CALL | IT_STRING2, NULL, "Move Forward / Up",     	M_ChangeControl, gc_forward     },
+	{IT_CALL | IT_STRING2, NULL, "Move Backward / Down",    M_ChangeControl, gc_backward    },
+	{IT_CALL | IT_STRING2, NULL, "Move Left / Left",        M_ChangeControl, gc_strafeleft  },
+	{IT_CALL | IT_STRING2, NULL, "Move Right / Right",      M_ChangeControl, gc_straferight },
 	{IT_CALL | IT_STRING2, NULL, "Turn Left",      M_ChangeControl, gc_turnleft    },
 	{IT_CALL | IT_STRING2, NULL, "Turn Right",     M_ChangeControl, gc_turnright   },
-	{IT_CALL | IT_STRING2, NULL, "Center View",      M_ChangeControl, gc_centerview  },
-	{IT_CALL | IT_STRING2, NULL, "Toggle Mouselook", M_ChangeControl, gc_mouseaiming },
-	{IT_CALL | IT_STRING2, NULL, "Toggle Third-Person", M_ChangeControl, gc_camtoggle},
-	{IT_CALL | IT_STRING2, NULL, "Reset Camera",     M_ChangeControl, gc_camreset    },
-	{IT_HEADER, NULL, "  Advanced", NULL, 0},
-	{IT_CALL | IT_STRING2, NULL, "Rotate Camera L",  M_ChangeControl, gc_camleft      },
-	{IT_CALL | IT_STRING2, NULL, "Rotate Camera R",  M_ChangeControl, gc_camright     },
+	{IT_HEADER, NULL, "  Buttons", NULL, 0},
+	{IT_CALL | IT_STRING2, NULL, "A Button",             	M_ChangeControl, gc_jump      	},
+	{IT_CALL | IT_STRING2, NULL, "B Button",             	M_ChangeControl, gc_use     	},
+	{IT_CALL | IT_STRING2, NULL, "C Button",        		M_ChangeControl, gc_tossflag    },
+	{IT_CALL | IT_STRING2, NULL, "L Button",      M_ChangeControl, gc_weaponprev   },
+	{IT_CALL | IT_STRING2, NULL, "R Button",      M_ChangeControl, gc_weaponnext   },
+	{IT_HEADER, NULL, "  Multiplayer", NULL, 0},	
+	{IT_CALL | IT_STRING2, NULL, "Open Chat",         M_ChangeControl, gc_talkkey  },
 };
 
 static menuitem_t OP_MPControlsMenu[] =
 {
-	{IT_CALL | IT_STRING2, NULL, "Talk key",         M_ChangeControl, gc_talkkey      },
 	{IT_CALL | IT_STRING2, NULL, "Team-Talk key",    M_ChangeControl, gc_teamkey      },
 	{IT_CALL | IT_STRING2, NULL, "Rankings/Scores",  M_ChangeControl, gc_scores       },
-	{IT_CALL | IT_STRING2, NULL, "Toss Flag",        M_ChangeControl, gc_tossflag     },
-	{IT_CALL | IT_STRING2, NULL, "Next Weapon",      M_ChangeControl, gc_weaponnext   },
-	{IT_CALL | IT_STRING2, NULL, "Prev Weapon",      M_ChangeControl, gc_weaponprev   },
 	{IT_CALL | IT_STRING2, NULL, "Weapon Slot 1",    M_ChangeControl, gc_wepslot1     },
 	{IT_CALL | IT_STRING2, NULL, "Weapon Slot 2",    M_ChangeControl, gc_wepslot2     },
 	{IT_CALL | IT_STRING2, NULL, "Weapon Slot 3",    M_ChangeControl, gc_wepslot3     },

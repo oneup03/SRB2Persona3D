@@ -54,11 +54,7 @@ const char *const hookNames[hook_MAX+1] = {
 	"PlayerMsg",
 	"HurtMsg",
 	"PlayerSpawn",
-<<<<<<< HEAD
-	"MusicChange",
-=======
 	"PlayerQuit",
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 	NULL
 };
 
@@ -1080,62 +1076,15 @@ void LUAh_NetArchiveHook(lua_CFunction archFunc)
 	// stack: tables
 }
 
-<<<<<<< HEAD
-// Hook for music changes
-boolean LUAh_MusicChange(const char *oldname, const char *newname, char *newmusic, UINT16 *mflags, boolean *looping)
-{
-	hook_p hookp; 
-	boolean hooked = false;
-
-	strncpy(newmusic, newname, 7);
-
-	if (!gL || !(hooksAvailable[hook_MusicChange/8] & (1<<(hook_MusicChange%8))))
-		return false;
-=======
 void LUAh_PlayerQuit(player_t *plr, int reason)
 {
 	hook_p hookp;
 	if (!gL || !(hooksAvailable[hook_PlayerQuit/8] & (1<<(hook_PlayerQuit%8))))
 		return;
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 
 	lua_settop(gL, 0);
 
 	for (hookp = roothook; hookp; hookp = hookp->next)
-<<<<<<< HEAD
-		if (hookp->type == hook_MusicChange)
-		{
-			lua_pushfstring(gL, FMT_HOOKID, hookp->id);
-			lua_gettable(gL, LUA_REGISTRYINDEX);
-			lua_pushstring(gL, oldname);
-			lua_pushstring(gL, newname);
-			lua_pushinteger(gL, *mflags);
-			lua_pushboolean(gL, *looping);
-			if (lua_pcall(gL, 4, 3, 0)) {
-				CONS_Alert(CONS_WARNING,"%s\n",lua_tostring(gL,-1));
-				lua_pop(gL, 1);
-				continue;
-			}
-
-			// output 1: true, false, or string musicname override
-			if (lua_isboolean(gL, -3) && lua_toboolean(gL, -3))
-				hooked = true;
-			else if (lua_isstring(gL, -3))
-				strncpy(newmusic, lua_tostring(gL, -3), 7);
-			// output 2: hook override
-			if (lua_isnumber(gL, -2))
-				*mflags = lua_tonumber(gL, -2);
-			// output 3: looping override
-			if (lua_isboolean(gL, -1))
-				*looping = lua_toboolean(gL, -1);
-
-			lua_pop(gL, 3);
-		}
-
-	lua_settop(gL, 0);
-	newmusic[6] = 0;
-	return hooked;
-=======
 		if (hookp->type == hook_PlayerQuit)
 		{
 		    if (lua_gettop(gL) == 0)
@@ -1151,7 +1100,6 @@ void LUAh_PlayerQuit(player_t *plr, int reason)
 		}
 
 	lua_settop(gL, 0);
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 }
 
 #endif

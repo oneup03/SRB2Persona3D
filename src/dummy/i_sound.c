@@ -203,32 +203,6 @@ boolean I_FadeSong(UINT8 target_volume, UINT32 ms, void (*callback)(void));
 	return false;
 }
 
-<<<<<<< HEAD
-boolean I_SetMusicPosition(UINT32 position)
-{
-    (void)position;
-    return false;
-}
-
-UINT32 I_GetMusicPosition(void)
-{
-    return 0;
-}
-
-boolean I_MIDIPlaying(void)
-{
-	return false;
-}
-
-boolean I_MusicPlaying(void)
-{
-	return false;
-}
-
-boolean I_MusicPaused(void)
-{
-	return false;
-=======
 boolean I_FadeOutStopSong(UINT32 ms)
 {
 	(void)ms;
@@ -240,5 +214,4 @@ boolean I_FadeInPlaySong(UINT32 ms, boolean looping)
         (void)ms;
         (void)looping;
         return false;
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 }

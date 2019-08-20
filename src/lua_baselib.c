@@ -780,20 +780,9 @@ static int lib_pRestoreMusic(lua_State *L)
 	NOHUD
 	if (!player)
 		return LUA_ErrInvalid(L, "player_t");
-<<<<<<< HEAD
-	if (!player || P_IsLocalPlayer(player))
-	{
-		P_RestoreMusic(player);
-		lua_pushboolean(L, true);
-	}
-	else
-		lua_pushnil(L);
-	return 1;
-=======
 	if (P_IsLocalPlayer(player))
 		P_RestoreMusic(player);
 	return 0;
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 }
 
 static int lib_pSpawnShieldOrb(lua_State *L)
@@ -1889,18 +1878,8 @@ static int lib_sChangeMusic(lua_State *L)
 	fadeinms = (UINT32)luaL_optinteger(L, 7, 0);
 
 	if (!player || P_IsLocalPlayer(player))
-<<<<<<< HEAD
-	{
-		S_ChangeMusic(music_name, music_flags, looping);
-		lua_pushboolean(L, true);
-	}
-	else
-		lua_pushnil(L);
-	return 1;
-=======
 		S_ChangeMusicEx(music_name, music_flags, looping, position, prefadems, fadeinms);
 	return 0;
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 }
 
 static int lib_sSpeedMusic(lua_State *L)
@@ -1916,199 +1895,14 @@ static int lib_sSpeedMusic(lua_State *L)
 			return LUA_ErrInvalid(L, "player_t");
 	}
 	if (!player || P_IsLocalPlayer(player))
-<<<<<<< HEAD
-		lua_pushboolean(L, S_SpeedMusic(speed));
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sSetMusicPosition(lua_State *L)
-{
-	UINT32 position = (UINT32)luaL_checkinteger(L, 1);
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 2) && lua_isuserdata(L, 2))
-	{
-		player = *((player_t **)luaL_checkudata(L, 2, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-		lua_pushboolean(L, S_SetMusicPosition(position));
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sGetMusicPosition(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 2) && lua_isuserdata(L, 2))
-	{
-		player = *((player_t **)luaL_checkudata(L, 2, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-		lua_pushinteger(L, (int)S_GetMusicPosition());
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sPauseMusic(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-	{
-		S_PauseAudio();
-		lua_pushboolean(L, true);
-	}
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sResumeMusic(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-	{
-		S_ResumeAudio();
-		lua_pushboolean(L, true);
-	}
-	else
-		lua_pushnil(L);
-	return 1;
-=======
 		S_SpeedMusic(speed);
 	return 0;
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
-}
-
-static int lib_sStopMusic(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-	{
-		S_StopMusic();
-		lua_pushboolean(L, true);
-	}
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sDigitalPlaying(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-		lua_pushboolean(L, !S_MIDIPlaying() && S_MusicPlaying());
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sMidiPlaying(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-		lua_pushboolean(L, S_MIDIPlaying());
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sMusicPlaying(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-		lua_pushboolean(L, S_MusicPlaying());
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sMusicPaused(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-		lua_pushboolean(L, S_MusicPaused());
-	else
-		lua_pushnil(L);
-	return 1;
-}
-
-static int lib_sMusicName(lua_State *L)
-{
-	player_t *player = NULL;
-	NOHUD
-	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
-	{
-		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
-		if (!player)
-			return LUA_ErrInvalid(L, "player_t");
-	}
-	if (!player || P_IsLocalPlayer(player))
-		lua_pushstring(L, S_MusicName());
-	else
-		lua_pushnil(L);
-	return 1;
 }
 
 static int lib_sMusicExists(lua_State *L)
 {
+	boolean checkMIDI = lua_opttrueboolean(L, 2);
+	boolean checkDigi = lua_opttrueboolean(L, 3);
 #ifdef MUSICSLOT_COMPATIBILITY
 	const char *music_name;
 	UINT32 music_num;
@@ -2136,11 +1930,25 @@ static int lib_sMusicExists(lua_State *L)
 #else
 	const char *music_name = luaL_checkstring(L, 1);
 #endif
-	boolean checkMIDI = lua_opttrueboolean(L, 2);
-	boolean checkDigi = lua_opttrueboolean(L, 3);
 	NOHUD
 	lua_pushboolean(L, S_MusicExists(music_name, checkMIDI, checkDigi));
 	return 1;
+}
+
+
+static int lib_sStopMusic(lua_State *L)
+{
+	player_t *player = NULL;
+	NOHUD
+	if (!lua_isnone(L, 1) && lua_isuserdata(L, 1))
+	{
+		player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+		if (!player)
+			return LUA_ErrInvalid(L, "player_t");
+	}
+	if (!player || P_IsLocalPlayer(player))
+		S_StopMusic();
+	return 0;
 }
 
 static int lib_sSetInternalMusicVolume(lua_State *L)
@@ -2598,24 +2406,12 @@ static luaL_Reg lib[] = {
 	{"S_StopSound",lib_sStopSound},
 	{"S_ChangeMusic",lib_sChangeMusic},
 	{"S_SpeedMusic",lib_sSpeedMusic},
-	{"S_SetMusicPosition",lib_sSetMusicPosition},
-	{"S_GetMusicPosition",lib_sGetMusicPosition},
-	{"S_PauseMusic",lib_sPauseMusic},
-	{"S_ResumeMusic",lib_sResumeMusic},
-	{"S_StopMusic",lib_sStopMusic},
-<<<<<<< HEAD
-	{"S_DigitalPlaying",lib_sDigitalPlaying},
-	{"S_MidiPlaying",lib_sMidiPlaying},
-	{"S_MusicPlaying",lib_sMusicPlaying},
-	{"S_MusicPaused",lib_sMusicPaused},
-	{"S_MusicName",lib_sMusicName},
 	{"S_MusicExists",lib_sMusicExists},
-=======
+	{"S_StopMusic",lib_sStopMusic},
 	{"S_SetInternalMusicVolume", lib_sSetInternalMusicVolume},
 	{"S_StopFadingMusic",lib_sStopFadingMusic},
 	{"S_FadeMusic",lib_sFadeMusic},
 	{"S_FadeOutStopMusic",lib_sFadeOutStopMusic},
->>>>>>> 016f1fe53357c0c2d4571f4b0fda74d8c651e613
 	{"S_OriginPlaying",lib_sOriginPlaying},
 	{"S_IdPlaying",lib_sIdPlaying},
 	{"S_SoundPlaying",lib_sSoundPlaying},

@@ -803,12 +803,19 @@ static void IdentifyVersion(void)
 
 	// if you change the ordering of this or add/remove a file, be sure to update the md5
 	// checking in D_SRB2Main
-
-	// Add the maps
-	D_AddFile(va(pandf,srb2waddir,"zones.dta"));
+	
+	// Main code:
+	D_AddFile(va(pandf,srb2waddir,"SRB2P-main.pk3"));
+	
+	// Graphics (sprites, textures [...])
+	D_AddFile(va(pandf,srb2waddir,"SRB2P-graphics.pk3"));
+	
+	// This is a .wad because pk3 hardly saves any space there, and it's more convenient to edit.
+	D_AddFile(va(pandf,srb2waddir,"SRB2P-maps.wad"));
+	
 
 	// Add the players
-	D_AddFile(va(pandf,srb2waddir, "player.dta"));
+	D_AddFile(va(pandf,srb2waddir, "SRB2P-chars.wad"));
 
 	// Add the weapons
 	D_AddFile(va(pandf,srb2waddir,"rings.dta"));
@@ -834,9 +841,17 @@ static void IdentifyVersion(void)
 		MUSICTEST("music_dc.dta")
 #else
 		MUSICTEST("music.dta")
+		MUSICTEST("SRB2P-music.wad")
+		MUSICTEST("SRB2P-sounds.wad")
 #endif
 	}
 #endif
+
+// used by srb2p if we need to quicky patch something (i.e: a single graphic) without sending the whole fucking game again
+#ifdef SRB2P_PATCH
+	D_AddFile(va(pandf,srb2waddir,"SRB2P-patch.pk3"));
+#endif
+
 }
 
 /* ======================================================================== */
@@ -1119,6 +1134,8 @@ void D_SRB2Main(void)
 #ifndef DEVELOP // md5s last updated 12/14/14
 
 	// Check MD5s of autoloaded files
+	// @TODO: SRB2PERSONA: PUT OUR FILE HASH HERE	
+	
 	W_VerifyFileMD5(mainwads++, ASSET_HASH_SRB2_SRB); // srb2.srb/srb2.wad
 	W_VerifyFileMD5(mainwads++, ASSET_HASH_ZONES_DTA); // zones.dta
 	W_VerifyFileMD5(mainwads++, ASSET_HASH_PLAYER_DTA); // player.dta
@@ -1133,13 +1150,17 @@ void D_SRB2Main(void)
 #else
 
 	mainwads++;	// srb2.srb/srb2.wad
-	mainwads++; // zones.dta
-	mainwads++; // player.dta
-	mainwads++; // rings.dta
+	mainwads++; // SRB2P-main
+	mainwads++; // SRB2P-graphics
+	mainwads++; // SRB2P-maps
+	mainwads++;	// player.dta @TODO: replace with SRB2P-chars
+	mainwads++;	// rings.dta (Do we really still need this?)
 #ifdef USE_PATCH_DTA
 	mainwads++; // patch.dta
 #endif
 	//mainwads++; // music.dta does not increment mainwads (see <= 2.1.21)
+	
+	
 
 #endif //ifndef DEVELOP
 

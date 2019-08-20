@@ -11,6 +11,8 @@
 /// \file  d_main.h
 /// \brief game startup, and main loop code, system specific interface stuff.
 
+#define SRB2P_PATCH
+
 #ifndef __D_MAIN__
 #define __D_MAIN__
 
