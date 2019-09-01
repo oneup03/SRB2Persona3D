@@ -139,7 +139,7 @@ void HWR_Lighting(FSurfaceInfo *Surface, INT32 light_level, UINT32 mixcolor, UIN
 	mix_color.rgba = mixcolor;
 	fog_color.rgba = fadecolor;
 
-	mix = mix_color.s.alpha*10/4;
+	mix = mix_color.s.alpha*10/5;
 	if (mix > 25) mix = 25;
 	mix *= 255;
 	mix /= 25;
@@ -166,7 +166,7 @@ void HWR_Lighting(FSurfaceInfo *Surface, INT32 light_level, UINT32 mixcolor, UIN
 	if (cv_grfog.value)
 	{
 		// be careful, this may get negative for high lightlevel values.
-		float fog = (fog_alpha - (light_level/255.0f))*3/2;
+		float fog = (fog_alpha - (light_level/255.0f))*115/100;
 		if (fog < 0)
 			fog = 0;
 

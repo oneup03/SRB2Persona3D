@@ -579,17 +579,35 @@ static gl_shaderprogram_t gl_shaderprograms[MAXSHADERPROGRAMS];
 // GLSL Software fragment shader
 //
 
+// dist is gl_FragCoord.z / gl_FragCoord.w
+// lighting is the polygon's light (0.0 to 255.0)
+// globaldensity is the fog density
+
+/*
+	1.0 -> no fog
+	0.0 -> pitch black
+
+	fog should at minimum be at the sector's lightlevel and then fade to that lightlevel + another value
+	GL lightlevels kinda suck though so everything needs to be darker somewhat.
+
+*/
+
 #define GLSL_INTERNAL_FOG_FUNCTION \
-	"float fog(const float dist, const float density,  const float globaldensity) {\n" \
+	"float fog(const float dist, const float lighting,  const float globaldensity) {\n" \
 		"const float LOG2 = -1.442695;\n" \
+		"const float brightness_coeff = 1.5;\n" \
+		"const float brightness_add = 64.0;\n" \
+		"float density = 0.0001 * ((256.0-lighting)/24.0);\n" \
 		"float d = density * dist;\n" \
-		"return 1.0 - clamp(exp2(d * d * globaldensity * LOG2), 0.0, 1.0);\n" \
+		"float startbrightness = clamp(lighting / brightness_coeff, 0.0, 255.0);\n" \
+		"float endbrightness = clamp(startbrightness - brightness_add, 0.0, 255.0);\n" \
+		"return 1.0 - clamp( startbrightness/255.0 + exp2(d*4*globaldensity * LOG2)/4.0, endbrightness/255.0, lighting/255.0);\n" \
 	"}\n"
 
 // https://www.khronos.org/registry/OpenGL/extensions/ARB/ARB_gpu_shader_fp64.txt
 #define GLSL_INTERNAL_FOG_MIX \
 	"float fog_distance = gl_FragCoord.z / gl_FragCoord.w;\n" \
-	"float fog_attenuation = floor(fog(fog_distance, 0.0001 * ((256.0-lighting)/24.0), fog_density)*10.0)/10.0;\n" \
+	"float fog_attenuation = floor(fog(fog_distance, lighting, fog_density)*10.0)/10.0;\n" \
 	"vec4 fog_color = vec4(fade_color[0], fade_color[1], fade_color[2], 1.0);\n" \
 	"vec4 mixed_color = texel * mix_color;\n" \
 	"vec4 fog_mix = mix(mixed_color, fog_color, fog_attenuation);\n" \
