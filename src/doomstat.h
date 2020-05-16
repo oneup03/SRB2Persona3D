@@ -663,7 +663,7 @@ extern consvar_t cv_powerupdisplay; // display powerups
 extern consvar_t cv_showinputjoy; // display joystick in time attack
 extern consvar_t cv_forceskin; // force clients to use the server's skin
 extern consvar_t cv_downloading; // allow clients to downloading WADs.
-extern ticcmd_t netcmds[BACKUPTICS][MAXPLAYERS];
+extern ticcmd_t netcmds[TICQUEUE][MAXPLAYERS];
 extern INT32 serverplayer;
 extern INT32 adminplayers[MAXPLAYERS];
 

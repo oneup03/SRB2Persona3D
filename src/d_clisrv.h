@@ -34,6 +34,7 @@ applications may follow different packet versions.
 
 // Networking and tick handling related.
 #define BACKUPTICS 96
+#define TICQUEUE 512
 #define MAXTEXTCMD 256
 //
 // Packet structure
@@ -520,7 +521,7 @@ extern consvar_t cv_resynchattempts, cv_blamecfail;
 extern consvar_t cv_maxsend, cv_noticedownload, cv_downloadspeed;
 
 // Used in d_net, the only dependence
-tic_t ExpandTics(INT32 low);
+tic_t ExpandTics(INT32 low, tic_t basetic);
 void D_ClientServerInit(void);
 
 // Initialise the other field
