@@ -1,4 +1,4 @@
-#define SRB2VERSION "1.3.0"/* this must be the first line, for cmake !! */
+#define SRB2VERSION "1.2.0"/* this must be the first line, for cmake !! */
 
 // The Modification ID; must be obtained from a Master Server Admin ( https://mb.srb2.org/showgroups.php ).
 // DO NOT try to set this otherwise, or your modification will be unplayable through the Master Server.
@@ -10,7 +10,6 @@
 // Only set it higher, not lower, obviously.
 // Note that we use this to help keep internal testing in check; this is why v2.2.0 is not version "1".
 #define MODVERSION 1
-
 
 // Define this as a prerelease version suffix
 // #define BETAVERSION "RC1"
