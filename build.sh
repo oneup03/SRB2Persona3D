@@ -3,8 +3,8 @@
 # build.sh - Build SRB2 Persona (64-bit, MinGW-w64 + SDL2/OpenGL)
 #
 # This is the supported build. The fork was developed against MinGW/GCC and
-# ships MinGW-built runtime DLLs; the MSVC project (build.ps1) compiles but
-# renders incorrectly, so use this one.
+# ships MinGW-built runtime DLLs; the MSVC project (src/sdl/Srb2SDL-vc10.vcxproj)
+# still compiles but renders incorrectly, so use this one.
 #
 # Works natively on Windows under git-bash with MinGW-w64, and when
 # cross-compiling from Linux (gcc-mingw-w64-x86-64-win32). It rebuilds the
