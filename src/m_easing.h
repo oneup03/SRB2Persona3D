@@ -88,7 +88,10 @@ extern const char *easing_funcnames[EASE_MAX];
 
 #define EASINGFUNC(type) fixed_t Easing_ ## type (fixed_t t, fixed_t start, fixed_t end);
 
-EASINGFUNCLIST()
+// Named empty separator rather than EASINGFUNCLIST(): passing a literally
+// empty argument makes MSVC's preprocessor emit C4003.
+#define EASING_NOSEP
+EASINGFUNCLIST(EASING_NOSEP)
 
 #undef EASINGFUNC
 #define EASINGFUNC(type) fixed_t Easing_ ## type (fixed_t t, fixed_t start, fixed_t end, fixed_t param);

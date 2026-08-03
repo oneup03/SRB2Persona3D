@@ -90,7 +90,7 @@ static int lib_finetangent(lua_State *L)
 
 static int lib_fixedasin(lua_State *L)
 {
-	lua_pushangle(L, -FixedAcos(luaL_checkfixed(L, 1)) + ANGLE_90);
+	lua_pushangle(L, (angle_t)(0 - FixedAcos(luaL_checkfixed(L, 1))) + ANGLE_90);
 	return 1;
 }
 

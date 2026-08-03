@@ -31,17 +31,12 @@
 #include <stdint.h>
 #endif
 
-#define UINT8 unsigned __int8
+// Only SINT8 is ours. UINT8/INT16/UINT16/INT32/UINT32/INT64/UINT64 all come
+// from <windows.h> (basetsd.h) which is included above. Defining them as
+// macros here breaks any translation unit that reaches basetsd.h afterwards:
+// its own `typedef signed int INT32, *PINT32;` would expand to
+// `typedef signed int __int32` -> "'int' followed by 'int' is illegal".
 #define SINT8 signed __int8
-
-#define UINT16 unsigned __int16
-#define INT16 __int16
-
-#define INT32 __int32
-#define UINT32 unsigned __int32
-
-#define INT64  __int64
-#define UINT64 unsigned __int64
 
 typedef long ssize_t;
 

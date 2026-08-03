@@ -192,7 +192,7 @@ void R_DrawFloorSplat(vissprite_t *spr)
 	if (!(spr->cut & SC_ISROTATED))
 		splatangle += mobj->rollangle;
 
-	splat.angle = -splatangle;
+	splat.angle = (angle_t)(0 - splatangle); // not -splatangle: MSVC C4146 on unsigned
 	splat.angle += ANGLE_90;
 
 	topoffset = spr->spriteyoffset;
@@ -237,7 +237,7 @@ void R_DrawFloorSplat(vissprite_t *spr)
 	splat.verts[3].x = w - xoffset;
 	splat.verts[3].y = -h + yoffset;
 
-	angle = -splat.angle>>ANGLETOFINESHIFT;
+	angle = ((angle_t)(0 - splat.angle))>>ANGLETOFINESHIFT;
 	ca = FINECOSINE(angle);
 	sa = FINESINE(angle);
 

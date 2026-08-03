@@ -693,7 +693,7 @@ void readskincolor(MYFILE *f, INT32 num)
 			if (fastcmp(word, "NAME"))
 			{
 				size_t namesize = sizeof(skincolors[num].name);
-				char truncword[namesize];
+				char truncword[MAXCOLORNAME+1]; // == namesize; not a VLA, MSVC has no C99 VLAs
 				UINT16 dupecheck;
 
 				deh_strlcpy(truncword, word2, namesize, va("Skincolor %d: name", num)); // truncate here to check for dupes
@@ -701,7 +701,7 @@ void readskincolor(MYFILE *f, INT32 num)
 				if (truncword[0] != '\0' && (!stricmp(truncword, skincolors[SKINCOLOR_NONE].name) || (dupecheck && dupecheck != num)))
 				{
 					size_t lastchar = strlen(truncword);
-					char oldword[lastchar+1];
+					char oldword[MAXCOLORNAME+1]; // >= lastchar+1; not a VLA, MSVC has no C99 VLAs
 					char dupenum = '1';
 
 					strlcpy(oldword, truncword, lastchar+1);

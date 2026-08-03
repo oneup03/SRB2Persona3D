@@ -2458,7 +2458,6 @@ fixed_t V_SRB2PgenericStringWidth(const char *string, const char *prefix, fixed_
 	unsigned char c;
 
 	// Patch stuff
-	lumpnum_t lumpnum;
 	patch_t *pp = NULL;
 
 	if (!s[0])

@@ -4129,7 +4129,7 @@ static void HWR_DrawSprite(gl_vissprite_t *spr)
 		if (!spr->rotated)
 			angle += spr->mobj->rollangle;
 
-		angle = -angle;
+		angle = (angle_t)(0 - angle); // not -angle: MSVC errors on unary minus of unsigned (C4146)
 		angle += ANGLE_90;
 
 		topoffset = spr->spriteyoffset;
@@ -4164,8 +4164,8 @@ static void HWR_DrawSprite(gl_vissprite_t *spr)
 		verts[0].x = -xoffset;
 		verts[0].y = -h + yoffset;
 
-		ca = FIXED_TO_FLOAT(FINECOSINE((-angle)>>ANGLETOFINESHIFT));
-		sa = FIXED_TO_FLOAT(FINESINE((-angle)>>ANGLETOFINESHIFT));
+		ca = FIXED_TO_FLOAT(FINECOSINE(((angle_t)(0 - angle))>>ANGLETOFINESHIFT));
+		sa = FIXED_TO_FLOAT(FINESINE(((angle_t)(0 - angle))>>ANGLETOFINESHIFT));
 
 		// Rotate
 		for (i = 0; i < 4; i++)

@@ -11,7 +11,11 @@
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>HAVE_PNG;COMPVERSION;HAVE_BLUA;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <CompileAs>CompileAsC</CompileAs>
-      <BrowseInformation>true</BrowseInformation>
+      <!-- BrowseInformation off: the legacy .bsc browse database isn't used by
+           anything here, it writes a ~4 MB .sbr per translation unit (>1 GB of
+           objs\), and the .sbr writes intermittently fail under parallel
+           builds with "Permission denied". -->
+      <BrowseInformation>false</BrowseInformation>
       <TreatWarningAsError>true</TreatWarningAsError>
       <EnablePREfast>false</EnablePREfast>
       <SDLCheck>true</SDLCheck>

@@ -3279,7 +3279,7 @@ static void Command_Addfile(void)
 	size_t argc = COM_Argc(); // amount of arguments total
 	size_t curarg; // current argument index
 
-	const char *addedfiles[argc]; // list of filenames already processed
+	const char *addedfiles[MAX_ARGS]; // list of filenames already processed (argc <= MAX_ARGS; not a VLA, MSVC has no C99 VLAs)
 	size_t numfilesadded = 0; // the amount of filenames processed
 
 	if (argc < 2)
@@ -3415,7 +3415,7 @@ static void Command_Addfolder(void)
 	size_t argc = COM_Argc(); // amount of arguments total
 	size_t curarg; // current argument index
 
-	const char *addedfolders[argc]; // list of filenames already processed
+	const char *addedfolders[MAX_ARGS]; // list of filenames already processed (argc <= MAX_ARGS; not a VLA, MSVC has no C99 VLAs)
 	size_t numfoldersadded = 0; // the amount of filenames processed
 
 	if (argc < 2)

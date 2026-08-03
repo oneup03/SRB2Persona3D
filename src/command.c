@@ -312,7 +312,7 @@ typedef struct xcommand_s
 
 static xcommand_t *com_commands = NULL; // current commands
 
-#define MAX_ARGS 80
+// MAX_ARGS now lives in command.h so callers can size fixed-length arrays.
 static size_t com_argc;
 static char *com_argv[MAX_ARGS];
 static const char *com_null_string = "";

@@ -87,7 +87,7 @@ static fixed_t fixlog2(fixed_t a)
 	}
 
 	if (a <= FRACUNIT)
-		return -y;
+		return -(fixed_t)y; // cast before negating: MSVC C4146 on unary minus of unsigned
 
 	return y;
 }

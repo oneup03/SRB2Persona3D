@@ -429,6 +429,7 @@
     <ClCompile Include="..\m_bbox.c" />
     <ClCompile Include="..\m_cheat.c" />
     <ClCompile Include="..\m_cond.c" />
+    <ClCompile Include="..\m_easing.c" />
     <ClCompile Include="..\m_fixed.c" />
     <ClCompile Include="..\m_menu.c" />
     <ClCompile Include="..\m_misc.c" />
@@ -478,7 +479,6 @@
     <ClCompile Include="..\r_things.c" />
     <ClCompile Include="..\screen.c" />
     <ClCompile Include="..\sounds.c" />
-    <ClCompile Include="..\strcasestr.c" />
     <ClCompile Include="..\string.c" />
     <ClCompile Include="..\st_stuff.c" />
     <ClCompile Include="..\s_sound.c" />
@@ -507,7 +507,6 @@
     <ClCompile Include="IMG_xpm.c">
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="i_cdmus.c" />
     <ClCompile Include="i_main.c" />
     <ClCompile Include="i_net.c" />
     <ClCompile Include="i_system.c" />

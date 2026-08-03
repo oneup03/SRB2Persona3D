@@ -39,6 +39,8 @@ typedef void (*com_func_t)(void);
 void COM_AddCommand(const char *name, com_func_t func);
 int COM_AddLuaCommand(const char *name);
 
+#define MAX_ARGS 80 // hard upper bound on COM_Argc(); callers size fixed arrays with it
+
 size_t COM_Argc(void);
 const char *COM_Argv(size_t arg); // if argv > argc, returns empty string
 char *COM_Args(void);

@@ -8358,7 +8358,7 @@ static void M_DrawLoadGameData(void)
 	if (vid.width != BASEVIDWIDTH*vid.dupx)
 		hsep = (hsep*vid.width)/(BASEVIDWIDTH*vid.dupx);
 
-	for (i = 2; prev_i; i = -(i + ((UINT32)i >> 31))) // draws from outwards in; 2, -2, 1, -1, 0
+	for (i = 2; prev_i; i = -(INT32)(i + ((UINT32)i >> 31))) // draws from outwards in; 2, -2, 1, -1, 0
 	{
 		prev_i = i;
 		savetodraw = (saveSlotSelected + i + numsaves)%numsaves;
