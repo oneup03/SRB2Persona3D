@@ -21,3 +21,14 @@ Win32_LIB_ASM_Release
 /assets/debian
 /make
 /bin
+
+# MSVC intermediates
+/objs/VC10
+/src/sdl/objs
+
+# Locally provisioned build tools (build.ps1 fetches NASM here on demand)
+/tools/nasm/
+# Staged runnable game folder produced by build.ps1
+/deploy/
+# The upstream full installer, if dropped in the repo root to extract assets
+/*.exe
