@@ -22,8 +22,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The LeiaSR shim is MSVC-only (the SR SDK ships MSVC import libs and a C++
+  # weaver with virtual inheritance), so it can't come out of the MinGW cross
+  # build below. It gets its own Windows runner and is handed over as an
+  # artifact. continue-on-error because the shim is genuinely optional: without
+  # it the engine's runtime loader reports LeiaSR unavailable and that mode
+  # falls back to plain Side-by-Side, so a shim failure must not sink the zip.
+  shim:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # Only the SR SDK submodule, not every submodule -- it's the sole thing
+      # the shim needs and it's a large checkout.
+      - name: Fetch SR-lib
+        run: git submodule update --init --depth 1 libs/SR-lib
+
+      - name: Build shim
+        run: |
+          cmake -S leiasr_shim -B leiasr_shim/build -A x64
+          cmake --build leiasr_shim/build --config Release
+
+      - name: Upload shim
+        uses: actions/upload-artifact@v4
+        with:
+          name: leiasr-shim
+          path: leiasr_shim/build/Release/leiasr_shim.dll
+          if-no-files-found: error
+
   windows:
     runs-on: ubuntu-latest
+    # always() so a failed/skipped shim job still lets the zip build.
+    needs: shim
+    if: always()
 
     steps:
       - uses: actions/checkout@v4
@@ -34,11 +68,21 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             make gcc-mingw-w64-x86-64-win32 binutils-mingw-w64-x86-64 zip
 
+      # build.sh stages any leiasr_shim.dll it finds at this path. Missing is
+      # fine -- LeiaSR then reports unavailable at runtime and falls back.
+      - name: Fetch shim artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: leiasr-shim
+          path: leiasr_shim/build/Release
+
       # build.sh is the same script the VS Code build task runs, so CI and
       # local builds can't drift. It picks up the x86_64-w64-mingw32-* tools
-      # automatically when cross-compiling.
+      # automatically when cross-compiling. --no-shim because the shim is MSVC
+      # and this runner is Linux; the job above already built it.
       - name: Build and stage
-        run: bash build.sh
+        run: bash build.sh --no-shim
 
       - name: Package
         id: pkg

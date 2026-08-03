@@ -12,12 +12,13 @@
 # and stages a runnable game folder in deploy/<Release|Debug>.
 #
 # Usage:
-#   ./build.sh [--clean] [--debug] [--no-deploy] [--jobs N]
+#   ./build.sh [--clean] [--debug] [--no-deploy] [--no-shim] [--jobs N]
 #
 # Options:
 #   --clean       run "make clean" for the Mingw64 target before building
 #   --debug       DEBUGMODE=1 build (output lands in bin/debug/)
 #   --no-deploy   build only; don't stage the deploy folder
+#   --no-shim     skip the optional LeiaSR shim DLL build (MSVC-only step)
 #   --jobs N      parallel make jobs (default: number of CPUs)
 #
 # Environment overrides:
@@ -36,12 +37,14 @@ JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 DO_CLEAN=0
 DO_DEPLOY=1
 DEBUG=0
+DO_SHIM=1
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--clean)      DO_CLEAN=1 ;;
 		--debug)      DEBUG=1 ;;
 		--no-deploy)  DO_DEPLOY=0 ;;
+		--no-shim)    DO_SHIM=0 ;;
 		--jobs)       JOBS="$2"; shift ;;
 		--jobs=*)     JOBS="${1#*=}" ;;
 		-h|--help)    sed -n '2,/^$/p' "$0" | sed 's/^# \?//'; exit 0 ;;
@@ -135,6 +138,39 @@ fi
 [ -f "$OUT/srb2win64.exe" ] || { echo "build.sh: expected $OUT/srb2win64.exe, not found" >&2; exit 1; }
 echo ">> built     : $OUT/srb2win64.exe"
 
+# 3b. Optional LeiaSR shim DLL (MSVC). See leiasr_shim/CMakeLists.txt. This is
+#     a separate toolchain from the game, so every failure here is non-fatal:
+#     without the DLL, R_LeiaSR_Available() returns false and the LeiaSR
+#     stereo mode degrades to plain Side-by-Side. CI builds it in a dedicated
+#     windows-latest job and passes it in as an artifact, so CI runs --no-shim.
+if [ "$DO_SHIM" = 1 ] && [ -f leiasr_shim/CMakeLists.txt ]; then
+	if [ ! -f libs/SR-lib/SR.cpp ] && command -v git >/dev/null 2>&1; then
+		echo ">> initializing libs/SR-lib submodule"
+		if ! git submodule update --init libs/SR-lib 2>/dev/null; then
+			echo "   (skipped - submodule init failed; LeiaSR shim will not build)"
+		fi
+	fi
+
+	if command -v cmake >/dev/null 2>&1 && [ -f libs/SR-lib/SR.cpp ]; then
+		echo ">> building LeiaSR shim DLL (MSVC)"
+		# Configure separately from build so "no MSVC toolchain at all" is
+		# distinguishable from "shim source broke". -A x64 implies the Visual
+		# Studio generator, so this fails fast when cross-compiling on Linux.
+		if cmake -S leiasr_shim -B leiasr_shim/build -A x64 >/tmp/shim-configure.log 2>&1; then
+			if cmake --build leiasr_shim/build --config Release >/tmp/shim-build.log 2>&1; then
+				echo "   shim built  : leiasr_shim/build/Release/leiasr_shim.dll"
+			else
+				echo "   WARN: shim compile failed (see /tmp/shim-build.log); LeiaSR falls back to SbS"
+			fi
+		elif [ "${OSTYPE:-}" = "msys" ] || [ "${OSTYPE:-}" = "cygwin" ] || [ "${OS:-}" = "Windows_NT" ]; then
+			# Quiet when cross-compiling (expected); loud on Windows, where a
+			# missing Visual Studio is a real thing the user wants to know.
+			echo "   WARN: shim configure failed (see /tmp/shim-configure.log); is Visual Studio installed?"
+			echo "         (LeiaSR mode will fall back to SbS)"
+		fi
+	fi
+fi
+
 [ "$DO_DEPLOY" = 1 ] || exit 0
 
 # 4. Stage a directly runnable game folder: exe + runtime DLLs + game data.
@@ -161,6 +197,16 @@ DLLS=(
 	libs/curl/lib64/libcurl-x64.dll
 )
 cp -f "${DLLS[@]}" "$DEPLOYDIR/"
+
+# The LeiaSR shim, when it built. Its absence is what the engine's runtime
+# loader treats as "SR unavailable", so this is genuinely optional.
+for cand in leiasr_shim/build/Release/leiasr_shim.dll leiasr_shim/leiasr_shim.dll; do
+	if [ -f "$cand" ]; then
+		echo ">> staging LeiaSR shim ($cand)"
+		cp -f "$cand" "$DEPLOYDIR/"
+		break
+	fi
+done
 
 # Game data (assets/installer is the SRB2_ASSET_DIRECTORY the CMake build
 # expects, and where the v1.3.6 data files are tracked).

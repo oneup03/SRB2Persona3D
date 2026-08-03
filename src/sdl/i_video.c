@@ -60,6 +60,7 @@
 
 #include "../doomstat.h"
 #include "../i_system.h"
+#include "../r_stereo_leiasr.h"
 #include "../v_video.h"
 #include "../m_argv.h"
 #include "../m_menu.h"
@@ -1944,6 +1945,11 @@ void VID_StartupOpenGL(void)
 
 void I_ShutdownGraphics(void)
 {
+	// Drop the SR weaver before the GL context goes away, so the SR
+	// connection isn't left dangling for the next launch. No-op when the
+	// shim never loaded.
+	R_LeiaSR_Shutdown();
+
 	const rendermode_t oldrendermode = rendermode;
 
 	rendermode = render_none;

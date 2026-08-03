@@ -54,6 +54,20 @@ MSVC-clean), but the resulting binary renders incorrectly and is **not
 supported** — use the MinGW build. Note that an MSVC build also creates an
 `objs/` directory, which makes `src/Makefile` refuse to run until you delete it.
 
+### Stereoscopic 3D
+
+Seven display modes on the OpenGL renderer, under Video Options ->
+Stereoscopic 3D: Side-by-Side, Top-and-Bottom, Anaglyph (Dubois red/cyan),
+Row-Interlaced, Column-Interlaced, Checkerboard, and LeiaSR autostereoscopic.
+Eye separation, convergence plane, eye swap, and separate HUD/crosshair depth
+are all adjustable.
+
+LeiaSR needs `leiasr_shim.dll`, an MSVC-built bridge to the Simulated Reality
+runtime -- MinGW can't link the SR SDK directly. `build.sh` builds it when
+Visual Studio and the `libs/SR-lib` submodule are present, and skips it
+otherwise; if the DLL, the SR runtime, or SR hardware is missing at runtime,
+LeiaSR simply falls back to Side-by-Side.
+
 ### Game data
 
 The v1.3.6 data files (`srb2.pk3`, `SRB2P-*.pk3` / `.wad`, `patch.pk3`) are
