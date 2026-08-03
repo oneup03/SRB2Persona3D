@@ -1,0 +1,6 @@
+# The SRB2 Persona game data lives here and must be tracked. The parent
+# assets/.gitignore blanket-ignores *.pk3 / *.wad / *.txt (upstream expects
+# you to supply your own copies); these negations re-include ours.
+!*.pk3
+!*.wad
+!*.txt
