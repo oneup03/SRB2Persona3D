@@ -17,6 +17,7 @@
 #endif
 
 #include "m_menu.h"
+#include "r_stereo.h"
 
 #include "doomdef.h"
 #include "d_main.h"
@@ -329,6 +330,8 @@ static void M_VideoOptions(INT32 choice);
 menu_t OP_VideoOptionsDef, OP_VideoModeDef, OP_ColorOptionsDef;
 #ifdef HWRENDER
 static void M_OpenGLOptionsMenu(void);
+static void M_Stereoscopic3DMenu(void);
+menu_t OP_Stereoscopic3DDef;
 menu_t OP_OpenGLOptionsDef;
 #ifdef ALAM_LIGHTING
 menu_t OP_OpenGLLightingDef;
@@ -1347,6 +1350,8 @@ static menuitem_t OP_VideoOptionsMenu[] =
 	{IT_TRANSTEXT | IT_PAIR, "Renderer", "Software",            &cv_renderer,           21},
 #endif
 
+	{IT_CALL | IT_STRING, NULL, "Stereoscopic 3D...",   M_Stereoscopic3DMenu,   26},
+
 	{IT_HEADER, NULL, "Color Profile", NULL, 30},
 	{IT_STRING | IT_CVAR | IT_CV_SLIDER, NULL, "Brightness (F11)", &cv_globalgamma,36},
 	{IT_STRING | IT_CVAR | IT_CV_SLIDER, NULL, "Saturation", &cv_globalsaturation, 41},
@@ -1437,6 +1442,19 @@ static menuitem_t OP_ColorOptionsMenu[] =
 };
 
 #ifdef HWRENDER
+static menuitem_t OP_Stereoscopic3DMenu[] =
+{
+	{IT_HEADER, NULL, "Stereoscopic 3D", NULL, 0},
+	{IT_STRING|IT_CVAR,               NULL, "Display Mode",      &cv_stereomode,           12},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Eye Separation",    &cv_stereoipd,            22},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Convergence Plane", &cv_stereofoclen,         32},
+	{IT_STRING|IT_CVAR,               NULL, "Swap Eyes",         &cv_stereoswap,           42},
+
+	{IT_HEADER, NULL, "HUD Depth", NULL, 56},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "HUD Depth",         &cv_stereohuddepth,       68},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Crosshair Depth",   &cv_stereocrosshairdepth, 78},
+};
+
 static menuitem_t OP_OpenGLOptionsMenu[] =
 {
 	{IT_HEADER, NULL, "3D Models", NULL, 0},
@@ -2237,6 +2255,21 @@ static void M_OpenGLOptionsMenu(void)
 menu_t OP_OpenGLOptionsDef = DEFAULTMENUSTYLE(
 	MTREE3(MN_OP_MAIN, MN_OP_VIDEO, MN_OP_OPENGL),
 	"M_VIDEO", OP_OpenGLOptionsMenu, &OP_VideoOptionsDef, 30, 30);
+
+// Stereoscopic 3D needs the OpenGL renderer, so gate it behind the same
+// check OpenGL Options uses -- the user gets a clear "switch renderer"
+// prompt rather than a menu whose settings silently do nothing.
+static void M_Stereoscopic3DMenu(void)
+{
+	if (rendermode == render_opengl)
+		M_SetupNextMenu(&OP_Stereoscopic3DDef);
+	else
+		M_StartMessage(M_GetText("Stereoscopic 3D requires the\nOpenGL renderer.\n\n(Press a key)\n"), NULL, MM_NOTHING);
+}
+
+menu_t OP_Stereoscopic3DDef = DEFAULTMENUSTYLE(
+	MTREE3(MN_OP_MAIN, MN_OP_VIDEO, MN_OP_STEREO3D),
+	"M_VIDEO", OP_Stereoscopic3DMenu, &OP_VideoOptionsDef, 30, 30);
 #ifdef ALAM_LIGHTING
 menu_t OP_OpenGLLightingDef = DEFAULTMENUSTYLE(
 	MTREE4(MN_OP_MAIN, MN_OP_VIDEO, MN_OP_OPENGL, MN_OP_OPENGL_LIGHTING),
@@ -13521,6 +13554,14 @@ static INT32 quitsounds[] =
 	sfx_chchng // Tails 11-09-99
 };
 
+// Per-eye drawer for the quit screen -- extracted so it can run inside the
+// R_DrawAcrossStereoEyes loop. Otherwise the patch draws once at the full
+// viewport and appears mono in stereo modes.
+static void M_QuitScreenDrawer(void)
+{
+	V_DrawScaledPatch(0, 0, 0, W_CachePatchName("GAMEQUIT", PU_PATCH)); // Demo 3 Quit Screen Tails 06-16-2001
+}
+
 void M_QuitResponse(INT32 ch)
 {
 	tic_t ptime;
@@ -13541,7 +13582,7 @@ void M_QuitResponse(INT32 ch)
 		ptime = I_GetTime() + NEWTICRATE*2; // Shortened the quit time, used to be 2 seconds Tails 03-26-2001
 		while (ptime > I_GetTime())
 		{
-			V_DrawScaledPatch(0, 0, 0, W_CachePatchName("GAMEQUIT", PU_PATCH)); // Demo 3 Quit Screen Tails 06-16-2001
+			R_DrawAcrossStereoEyes(M_QuitScreenDrawer);
 			I_FinishUpdate(); // Update the screen with the image Tails 06-19-2001
 			I_Sleep();
 		}

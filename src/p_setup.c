@@ -18,6 +18,7 @@
 
 #include "p_local.h"
 #include "p_setup.h"
+#include "r_stereo.h" // R_DrawAcrossStereoEyes for the loading screen
 #include "p_spec.h"
 #include "p_saveg.h"
 
@@ -4206,7 +4207,7 @@ boolean P_LoadLevel(boolean fromnetsave, boolean reloadinggamestate)
 	maptol = mapheaderinfo[gamemap-1]->typeoflevel;
 	gametyperules = gametypedefaultrules[gametype];
 
-	CON_Drawer(); // let the user know what we are going to do
+	R_DrawAcrossStereoEyes(CON_Drawer); // let the user know what we are going to do
 	I_FinishUpdate(); // page flip or blit buffer
 
 	// Reset the palette

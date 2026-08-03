@@ -302,6 +302,17 @@ gamestate_t wipegamestate = GS_LEVEL;
 INT16 wipetypepre = -1;
 INT16 wipetypepost = -1;
 
+// Fed to R_DrawAcrossStereoEyes for the wipe-stage-title path below: the
+// title card plus the levelfadecol overlay have to land in each eye's
+// viewport before F_WipeStartScreen captures the backbuffer as the wipe's
+// start frame. Without this the captured frame is mono and the wipe-in
+// flashes a flat title card across both eye halves.
+static void DrawTitleCardWithLevelFade(void)
+{
+	ST_preLevelTitleCardDrawer();
+	V_DrawFill(0, 0, BASEVIDWIDTH, BASEVIDHEIGHT, levelfadecol);
+}
+
 static void D_Display(void)
 {
 	boolean forcerefresh = false;
@@ -693,8 +704,7 @@ static void D_Display(void)
 			{
 				lt_ticker--;
 				lt_lasttic = lt_ticker;
-				ST_preLevelTitleCardDrawer();
-				V_DrawFill(0, 0, BASEVIDWIDTH, BASEVIDHEIGHT, levelfadecol);
+				R_DrawAcrossStereoEyes(DrawTitleCardWithLevelFade);
 				F_WipeStartScreen();
 			}
 

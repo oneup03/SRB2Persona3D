@@ -13,6 +13,7 @@
 /// \brief SRB2 2.1 custom fade mask "wipe" behavior.
 
 #include "f_finale.h"
+#include "r_stereo.h" // R_DrawAcrossStereoEyes for the stereo title-card overlay
 #include "i_video.h"
 #include "v_video.h"
 
@@ -194,8 +195,8 @@ void F_WipeStageTitle(void)
 	&& (wipestyle == WIPESTYLE_COLORMAP)
 	&& G_IsTitleCardAvailable())
 	{
-		ST_runTitleCard();
-		ST_drawWipeTitleCard();
+		ST_runTitleCard(); // mutates state -- must run once per frame, not once per eye
+		R_DrawAcrossStereoEyes(ST_drawWipeTitleCard);
 	}
 }
 
