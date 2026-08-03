@@ -1710,6 +1710,29 @@ static void Impl_VideoSetupBuffer(void)
 	}
 }
 
+// Native window handle, for the LeiaSR weaver bridge. The SR runtime binds
+// its weaver to an HWND; everywhere else this is a no-op returning NULL, which
+// R_LeiaSR_Init treats as "SR unavailable" and falls back to plain SbS.
+void *I_GetWindowHandle(void)
+{
+#ifdef _WIN32
+	SDL_SysWMinfo wminfo;
+
+	if (window == NULL)
+		return NULL;
+
+	SDL_VERSION(&wminfo.version);
+	if (!SDL_GetWindowWMInfo(window, &wminfo))
+		return NULL;
+	if (wminfo.subsystem != SDL_SYSWM_WINDOWS)
+		return NULL;
+
+	return (void *)wminfo.info.win.window;
+#else
+	return NULL;
+#endif
+}
+
 void I_StartupGraphics(void)
 {
 	if (dedicated)
@@ -1890,6 +1913,14 @@ void VID_StartupOpenGL(void)
 		HWD.pfnMakeScreenTexture= hwSym("MakeScreenTexture",NULL);
 		HWD.pfnMakeScreenFinalTexture=hwSym("MakeScreenFinalTexture",NULL);
 		HWD.pfnDrawScreenFinalTexture=hwSym("DrawScreenFinalTexture",NULL);
+
+		HWD.pfnGetLeiaTextureID     =hwSym("GetLeiaTextureID",NULL);
+		HWD.pfnMakeScreenTextureSized=hwSym("MakeScreenTextureSized",NULL);
+		HWD.pfnSetStereoMode        =hwSym("SetStereoMode",NULL);
+		HWD.pfnReapplyStereoMode    =hwSym("ReapplyStereoMode",NULL);
+		HWD.pfnResetStereoMode      =hwSym("ResetStereoMode",NULL);
+		HWD.pfnDrawInterlacedComposite=hwSym("DrawInterlacedComposite",NULL);
+		HWD.pfnSetPresentViewport   =hwSym("SetPresentViewport",NULL);
 
 		HWD.pfnCompileShaders   = hwSym("CompileShaders",NULL);
 		HWD.pfnCleanShaders     = hwSym("CleanShaders",NULL);

@@ -122,6 +122,14 @@ typedef struct
 #endif
 	boolean     shearing;        // 14042019
 	float       viewaiming;      // 17052019
+	// Stereoscopic 3D state. eyeOffset is -1/0/+1 (left/mono/right).
+	// When eyeOffset != 0 the renderer builds an off-axis frustum using
+	// iod (signed eye separation) and focalLength (convergence plane).
+	// skyboxPass collapses the focal plane to push sky to "infinity" disparity.
+	SINT8       eyeOffset;
+	float       iod;
+	float       focalLength;
+	boolean     skyboxPass;
 } FTransform;
 
 // Transformed vector, as passed to HWR API
@@ -146,12 +154,21 @@ enum
 	SHADER_FOG,
 	SHADER_SKY,
 
+	// Stereoscopic 3D present-time composites. Each takes the internally
+	// rendered SbS/TaB frame and resolves it to one display-resolution
+	// image: the interlaced/checkerboard ones pick a half by pixel parity,
+	// the Dubois one mixes both halves through a colour matrix.
+	SHADER_ROW_INTERLACED_COMPOSITE,
+	SHADER_COLUMN_INTERLACED_COMPOSITE,
+	SHADER_CHECKERBOARD_COMPOSITE,
+	SHADER_ANAGLYPH_DUBOIS_COMPOSITE,
+
 	NUMBASESHADERS,
 };
 
 // Maximum amount of shader programs
 // Must be higher than NUMBASESHADERS
-#define HWR_MAXSHADERS 16
+#define HWR_MAXSHADERS 24
 
 // Shader sources (vertex and fragment)
 typedef struct

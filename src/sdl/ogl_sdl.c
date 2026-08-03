@@ -38,6 +38,8 @@
 #ifdef HWRENDER
 #include "../hardware/r_opengl/r_opengl.h"
 #include "../hardware/hw_main.h"
+#include "../r_stereo.h"
+#include "../r_stereo_leiasr.h"
 #include "ogl_sdl.h"
 #include "../i_system.h"
 #include "hwsym_sdl.h"
@@ -215,6 +217,9 @@ void OglSdlFinishUpdate(boolean waitvbl)
 {
 	static boolean oldwaitvbl = false;
 	int sdlw, sdlh;
+	INT32 composite_shader = -1;
+	boolean weave = false;
+	boolean stereo_stretch;
 	if (oldwaitvbl != waitvbl)
 	{
 		SDL_GL_SetSwapInterval(waitvbl ? 1 : 0);
@@ -224,15 +229,61 @@ void OglSdlFinishUpdate(boolean waitvbl)
 
 	SDL_GetWindowSize(window, &sdlw, &sdlh);
 
+	// Stereo present paths stretch the rendered backbuffer to fill the window:
+	// black bars from aspect mismatch would break a full-SbS display's signal,
+	// the SR weaver's input, and the composite shaders' source layout.
+	stereo_stretch = R_BackbufferIsStereo();
+
+	// Which display format the user asked for. Deliberately cv_stereomode and
+	// NOT R_StereoMode(): the latter has already collapsed several distinct
+	// user-facing modes down to the SbS/TaB layout they render as internally,
+	// which is exactly the information we must not lose here.
+	if (stereo_stretch)
+	{
+		switch (cv_stereomode.value)
+		{
+			case STEREO_ANAGLYPH:          composite_shader = SHADER_ANAGLYPH_DUBOIS_COMPOSITE;   break;
+			case STEREO_ROW_INTERLACED:    composite_shader = SHADER_ROW_INTERLACED_COMPOSITE;    break;
+			case STEREO_COLUMN_INTERLACED: composite_shader = SHADER_COLUMN_INTERLACED_COMPOSITE; break;
+			case STEREO_CHECKERBOARD:      composite_shader = SHADER_CHECKERBOARD_COMPOSITE;      break;
+			case STEREO_LEIASR:            weave = R_LeiaSR_Available();                          break;
+			default: break;
+		}
+	}
+
 	HWR_MakeScreenFinalTexture();
-	HWR_DrawScreenFinalTexture(sdlw, sdlh);
+	HWR_DrawScreenFinalTexture(sdlw, sdlh, stereo_stretch);
+
+	if (composite_shader >= 0 || weave)
+	{
+		// Both paths need a source texture whose dimensions match the display,
+		// so that per-pixel parity (interlaced/checkerboard) and the weaver's
+		// [0,1] sampling land on real display pixels. The draw above already
+		// stretched the render to window size; recapture that.
+		//
+		// Do NOT call GClipRect between here and the weave: it derives its
+		// viewport from screen_height (the *rendered* height), which goes
+		// negative once sdlh > screen_height and pushes the output off-screen.
+		HWR_MakeScreenLeiaTextureSized(sdlw, sdlh);
+
+		if (composite_shader >= 0)
+			HWR_DrawStereoComposite(composite_shader, sdlw, sdlh);
+		else
+		{
+			// The weaver writes into the bound viewport, which after the eye
+			// loop is still the engine's render rect.
+			HWR_SetPresentViewport(sdlw, sdlh);
+			R_LeiaSR_Weave(HWR_GetScreenLeiaTextureID(), sdlw, sdlh);
+		}
+	}
+
 	SDL_GL_SwapWindow(window);
 
 	GClipRect(0, 0, realwidth, realheight, NZCLIP_PLANE);
 
 	// Sryder:	We need to draw the final screen texture again into the other buffer in the original position so that
 	//			effects that want to take the old screen can do so after this
-	HWR_DrawScreenFinalTexture(realwidth, realheight);
+	HWR_DrawScreenFinalTexture(realwidth, realheight, stereo_stretch);
 }
 
 EXPORT void HWRAPI(OglSdlSetPalette) (RGBA_t *palette)

@@ -65,7 +65,46 @@ void HWR_DrawIntermissionBG(void);
 void HWR_DoWipe(UINT8 wipenum, UINT8 scrnnum);
 void HWR_DoTintedWipe(UINT8 wipenum, UINT8 scrnnum);
 void HWR_MakeScreenFinalTexture(void);
-void HWR_DrawScreenFinalTexture(int width, int height);
+void HWR_DrawScreenFinalTexture(int width, int height, boolean stretch);
+
+// ==========================================================================
+//                                                       STEREOSCOPIC 3D
+// ==========================================================================
+// Thin pass-throughs for the stereo driver hooks. Anything that includes
+// r_opengl.h sets _CREATE_DLL_, which hides HWD, so callers like ogl_sdl.c
+// and r_stereo.c have to drive per-eye state through these wrappers.
+
+void HWR_SetStereoMode(INT32 mode, INT32 eye, INT32 x, INT32 y, INT32 w, INT32 h);
+void HWR_ResetStereoMode(void);
+
+// Captures the current framebuffer into the "screen snapshot" sampled by
+// HWR_DrawIntermissionBG and the underwater/heat wave. d_main.c calls this
+// once after the stereo eye loop completes so the snapshot contains BOTH
+// eyes' fully-painted halves; the per-player capture inside
+// HWR_DoPostProcessor otherwise fires before each eye's HUD pass and would
+// leave the snapshot's second half missing its HUD (visible as "intermission
+// BG asymmetric, lives/rings only show in one eye").
+void HWR_MakeScreenTexture(void);
+
+// Capture the framebuffer at exact (width, height) into the tightly-fitted
+// NPOT LeiaSR slot. Used when the rendered backbuffer is smaller than the
+// SDL window -- the caller stretches the rendered content to fill first,
+// then captures the stretched output.
+void   HWR_MakeScreenLeiaTextureSized(INT32 width, INT32 height);
+UINT32 HWR_GetScreenLeiaTextureID(void);
+
+// Set the GL viewport to (0, 0, width, height). Used by the LeiaSR present
+// path right before R_LeiaSR_Weave so the weaver writes to the full SDL
+// window instead of the engine's render rectangle (which may be smaller).
+void HWR_SetPresentViewport(INT32 width, INT32 height);
+
+// Composite the captured stereo frame into a display format via a fragment
+// shader. shader_target selects the composite kind:
+//   SHADER_ROW_INTERLACED_COMPOSITE     -- TaB source -> row-interleaved
+//   SHADER_COLUMN_INTERLACED_COMPOSITE  -- SbS source -> column-interleaved
+//   SHADER_CHECKERBOARD_COMPOSITE       -- SbS source -> checkerboard
+//   SHADER_ANAGLYPH_DUBOIS_COMPOSITE    -- SbS source -> red/cyan Dubois
+void HWR_DrawStereoComposite(INT32 shader_target, INT32 width, INT32 height);
 
 // This stuff is put here so models can use them
 void HWR_Lighting(FSurfaceInfo *Surface, INT32 light_level, extracolormap_t *colormap);

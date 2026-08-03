@@ -63,7 +63,56 @@ EXPORT void HWRAPI(DoScreenWipe) (void);
 EXPORT void HWRAPI(DrawIntermissionBG) (void);
 EXPORT void HWRAPI(MakeScreenTexture) (void);
 EXPORT void HWRAPI(MakeScreenFinalTexture) (void);
-EXPORT void HWRAPI(DrawScreenFinalTexture) (int width, int height);
+// stretch=true fills the (width, height) viewport without aspect
+// preservation. Used by stereo present paths (full-SbS displays presenting
+// as 3840x1080, LeiaSR weaver input, interlaced composite source) where
+// black bars would break the stereo signal pipeline. stretch=false aspect-
+// preserves the rendered backbuffer inside the viewport -- used for mono
+// rendering so the early-startup BASE 320x200 loading window doesn't get
+// stretched across the full desktop.
+EXPORT void HWRAPI(DrawScreenFinalTexture) (int width, int height, boolean stretch);
+
+// ==========================================================================
+//                                                       STEREOSCOPIC 3D
+// ==========================================================================
+
+// Returns the OpenGL texture ID of the LeiaSR capture slot, so the weaver
+// bridge can hand the side-by-side capture to the SR runtime.
+EXPORT UINT32 HWRAPI(GetLeiaTextureID)(void);
+
+// Capture the backbuffer into a tightly-fitted NPOT texture of exactly
+// (width, height) pixels, recreating it when the dimensions change. The SR
+// weaver samples [0,1] across its input and would otherwise see padding, so
+// this can't reuse the power-of-two screen texture.
+EXPORT void HWRAPI(MakeScreenTextureSized)(INT32 width, INT32 height);
+
+// Stereoscopic 3D mode setup. mode is the stereomode_t enum from r_stereo.h,
+// eye is -1 (left) / +1 (right). The (x, y, w, h) rect is the EXACT viewport
+// region the eye+player render should occupy -- d_main.c computes this via
+// R_StereoComputePlayerEyeRect so callers only need to pass it through.
+// SetStereoMode applies viewport+scissor to the rect; Anaglyph (Dubois),
+// Row/Column-Interlaced and Checkerboard all render SbS/TaB internally and
+// composite at present time via a fragment shader (see ogl_sdl.c), so this
+// entrypoint never touches the color mask or stencil per-eye.
+EXPORT void HWRAPI(SetStereoMode)(INT32 mode, INT32 eye,
+                                  INT32 x, INT32 y, INT32 w, INT32 h);
+// Re-applies the cached SetStereoMode state. HWR_ClearView calls this
+// after GClipRect overwrites the viewport so subsequent geometry stays
+// inside the per-eye region without needing to recompute the rect.
+EXPORT void HWRAPI(ReapplyStereoMode)(void);
+// Restores full viewport and color mask to mono defaults.
+EXPORT void HWRAPI(ResetStereoMode)(void);
+// Composite a TaB/SbS-rendered source texture into a stereo display format
+// using the currently-bound composite fragment shader (set by the caller
+// via HWR_DrawStereoComposite). Caller has captured the source texture at
+// (width, height) -- typically after a stretch step.
+EXPORT void HWRAPI(DrawInterlacedComposite)(INT32 width, INT32 height);
+// Set the GL viewport to (0, 0, width, height). Used by the LeiaSR present
+// path to give the SR weaver the full-SDL-window viewport as its output
+// region before calling weave() -- the weaver writes into the currently
+// bound viewport, and after the eye loop / ResetStereoMode the viewport is
+// still at the engine's render size (which may be smaller than the window).
+EXPORT void HWRAPI(SetPresentViewport)(INT32 width, INT32 height);
 
 #define SCREENVERTS 10
 EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2]);
@@ -127,6 +176,14 @@ struct hwdriver_s
 
 	SetShaderInfo       pfnSetShaderInfo;
 	LoadCustomShader    pfnLoadCustomShader;
+
+	GetLeiaTextureID    pfnGetLeiaTextureID;
+	MakeScreenTextureSized pfnMakeScreenTextureSized;
+	SetStereoMode       pfnSetStereoMode;
+	ReapplyStereoMode   pfnReapplyStereoMode;
+	ResetStereoMode     pfnResetStereoMode;
+	DrawInterlacedComposite pfnDrawInterlacedComposite;
+	SetPresentViewport  pfnSetPresentViewport;
 };
 
 extern struct hwdriver_s hwdriver;

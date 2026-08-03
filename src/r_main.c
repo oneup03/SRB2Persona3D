@@ -34,6 +34,7 @@
 #include "m_random.h" // quake camera shake
 #include "r_portal.h"
 #include "r_main.h"
+#include "r_stereo.h"
 #include "i_system.h" // I_GetPreciseTime
 
 #ifdef HWRENDER
@@ -1598,6 +1599,8 @@ void R_RegisterEngineStuff(void)
 	CV_RegisterVar(&cv_drawdist_nights);
 	CV_RegisterVar(&cv_drawdist_precip);
 	CV_RegisterVar(&cv_fov);
+
+	R_RegisterStereoVars();
 
 	CV_RegisterVar(&cv_chasecam);
 	CV_RegisterVar(&cv_chasecam2);

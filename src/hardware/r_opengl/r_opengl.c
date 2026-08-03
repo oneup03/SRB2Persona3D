@@ -94,6 +94,20 @@ static GLuint screentexture = 0;
 static GLuint startScreenWipe = 0;
 static GLuint endScreenWipe = 0;
 static GLuint finalScreenTexture = 0;
+static GLuint leiaTexture = 0;
+static INT32  leiaTextureW = 0, leiaTextureH = 0;
+
+// Cached stereo state so PostImgRedraw and other HWRAPI entrypoints can adapt
+// their sampling without threading mode/eye through their signatures. Updated
+// by SetStereoMode, cleared by ResetStereoMode. cached_stereo_rect_* holds the
+// exact viewport rect from the most recent SetStereoMode call so HWR_ClearView
+// can re-apply it after GClipRect overwrites the viewport.
+static INT32 current_stereo_mode   = 0;
+static INT32 current_stereo_eye    = 0;
+static INT32 cached_stereo_rect_x  = 0;
+static INT32 cached_stereo_rect_y  = 0;
+static INT32 cached_stereo_rect_w  = 0;
+static INT32 cached_stereo_rect_h  = 0;
 
 // shortcut for ((float)1/i)
 static const GLfloat byte2float[256] = {
@@ -831,6 +845,71 @@ static GLRGBAFloat shader_defaultcolor = {1.0f, 1.0f, 1.0f, 1.0f};
 static struct {
 	const char *vertex;
 	const char *fragment;
+// Stereoscopic 3D present-time composites. Each runs once per frame on a
+// fullscreen quad, resolving the internally-rendered SbS/TaB frame into the
+// display's stereo format. gl_FragCoord.x/y are screen-space pixels (bottom-up
+// in GL) so parity maps straight onto framebuffer pixel index. The integer
+// modulo is written as n - (n / 2) * 2 because % and mod() on ints vary across
+// GLSL versions.
+
+// SbS source, Dubois optimised red/cyan matrix. Each output channel pulls in
+// BOTH eyes -- the small negative cross-eye terms are what suppress the bleed
+// that makes naive anaglyphs look smeary and colour-warped.
+#define GLSL_ANAGLYPH_DUBOIS_COMPOSITE_FRAGMENT_SHADER \
+	"uniform sampler2D tex;\n" \
+	"void main(void) {\n" \
+		"vec2 uv = gl_TexCoord[0].st;\n" \
+		"vec2 uvL = vec2(uv.x * 0.5, uv.y);\n" \
+		"vec2 uvR = vec2(uv.x * 0.5 + 0.5, uv.y);\n" \
+		"vec3 cA = texture2D(tex, uvL).rgb;\n" \
+		"vec3 cB = texture2D(tex, uvR).rgb;\n" \
+		"float r = clamp( 0.437*cA.r + 0.449*cA.g + 0.164*cA.b - 0.011*cB.r - 0.032*cB.g - 0.007*cB.b, 0.0, 1.0);\n" \
+		"float g = clamp(-0.062*cA.r - 0.062*cA.g - 0.024*cA.b + 0.377*cB.r + 0.761*cB.g + 0.009*cB.b, 0.0, 1.0);\n" \
+		"float b = clamp(-0.048*cA.r - 0.050*cA.g - 0.017*cA.b - 0.026*cB.r - 0.093*cB.g + 1.234*cB.b, 0.0, 1.0);\n" \
+		"gl_FragColor = vec4(r, g, b, 1.0);\n" \
+	"}\0"
+
+// TaB source, row parity.
+#define GLSL_ROW_INTERLACED_COMPOSITE_FRAGMENT_SHADER \
+	"uniform sampler2D tex;\n" \
+	"void main(void) {\n" \
+		"vec2 uv = gl_TexCoord[0].st;\n" \
+		"int row = int(gl_FragCoord.y);\n" \
+		"if ((row - (row / 2) * 2) == 0)\n" \
+			"uv.y = uv.y * 0.5 + 0.5;\n" \
+		"else\n" \
+			"uv.y = uv.y * 0.5;\n" \
+		"gl_FragColor = texture2D(tex, uv);\n" \
+	"}\0"
+
+// SbS source, column parity.
+#define GLSL_COLUMN_INTERLACED_COMPOSITE_FRAGMENT_SHADER \
+	"uniform sampler2D tex;\n" \
+	"void main(void) {\n" \
+		"vec2 uv = gl_TexCoord[0].st;\n" \
+		"int col = int(gl_FragCoord.x);\n" \
+		"if ((col - (col / 2) * 2) == 0)\n" \
+			"uv.x = uv.x * 0.5;\n" \
+		"else\n" \
+			"uv.x = uv.x * 0.5 + 0.5;\n" \
+		"gl_FragColor = texture2D(tex, uv);\n" \
+	"}\0"
+
+// SbS source, (col + row) parity.
+#define GLSL_CHECKERBOARD_COMPOSITE_FRAGMENT_SHADER \
+	"uniform sampler2D tex;\n" \
+	"void main(void) {\n" \
+		"vec2 uv = gl_TexCoord[0].st;\n" \
+		"int col = int(gl_FragCoord.x);\n" \
+		"int row = int(gl_FragCoord.y);\n" \
+		"int sum = col + row;\n" \
+		"if ((sum - (sum / 2) * 2) == 0)\n" \
+			"uv.x = uv.x * 0.5;\n" \
+		"else\n" \
+			"uv.x = uv.x * 0.5 + 0.5;\n" \
+		"gl_FragColor = texture2D(tex, uv);\n" \
+	"}\0"
+
 } const gl_shadersources[] = {
 	// Default shader
 	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_DEFAULT_FRAGMENT_SHADER},
@@ -858,6 +937,12 @@ static struct {
 
 	// Sky shader
 	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_SKY_FRAGMENT_SHADER},
+
+	// Stereoscopic 3D composites (order must match the SHADER_* enum)
+	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_ROW_INTERLACED_COMPOSITE_FRAGMENT_SHADER},
+	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_COLUMN_INTERLACED_COMPOSITE_FRAGMENT_SHADER},
+	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_CHECKERBOARD_COMPOSITE_FRAGMENT_SHADER},
+	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_ANAGLYPH_DUBOIS_COMPOSITE_FRAGMENT_SHADER},
 
 	{NULL, NULL},
 };
@@ -1145,6 +1230,59 @@ static void GLPerspective(GLfloat fovy, GLfloat aspect)
 	m[3][2] = -2.0f * zNear * zFar / deltaZ;
 
 	pglMultMatrixf(&m[0][0]);
+}
+
+// Off-axis stereo perspective -- direct port of the OpenVR-style reference:
+//   horFov    = tan(fov/2)              (input fov is HORIZONTAL, in degrees)
+//   verFov    = horFov / aspect         (vertical derived from aspect ratio)
+//   eyeOffset = +-(sep/2) / conv        (per-eye lateral frustum shift, tan-space)
+//   bounds (tan-space, then * zNear for the glFrustum form):
+//     left   = -horFov + eyeOffset
+//     right  =  horFov + eyeOffset
+//     bottom = -verFov
+//     top    =  verFov
+// The eye translate (post-frustum -iod/2 in X) is what gives stereo its
+// depth-dependent parallax -- without it, all objects share the same constant
+// disparity (shear stereo). Skybox passes set skip_eye_translate=true so the
+// sky receives only the constant frustum shift = max-IPD parallax = "infinity".
+//   iod < 0 : left eye
+//   iod > 0 : right eye
+static void GLPerspectiveStereo(GLfloat fovy, GLfloat aspect, GLfloat iod, GLfloat focal, boolean skip_eye_translate)
+{
+	const GLfloat zNear = NEAR_CLIPPING_PLANE;
+	const GLfloat zFar = FAR_CLIPPING_PLANE;
+	const GLfloat radians = (GLfloat)(fovy / 2.0f * M_PIl / 180.0f);
+	const GLfloat horFov = (GLfloat)tan((double)radians);
+	const GLfloat verFov = horFov / aspect;
+	const GLfloat eyeOffset = -iod * 0.5f / focal;
+	const GLfloat deltaZ = zFar - zNear;
+	GLfloat top, bottom, left, right;
+
+	if ((fabsf((float)deltaZ) < 1.0E-36f) || fpclassify(horFov) == FP_ZERO
+		|| fpclassify(aspect) == FP_ZERO || focal <= 0.0f)
+	{
+		GLPerspective(fovy, aspect);
+		return;
+	}
+
+	// Bounds in world space at the near plane (tan-space * zNear).
+	top    =  zNear * verFov;
+	bottom = -top;
+	right  = zNear * ( horFov + eyeOffset);
+	left   = zNear * (-horFov + eyeOffset);
+
+	{
+		GLfloat m[4][4] = {
+			{ (2.0f*zNear)/(right-left), 0.0f,                      0.0f,                       0.0f},
+			{ 0.0f,                      (2.0f*zNear)/(top-bottom), 0.0f,                       0.0f},
+			{ (right+left)/(right-left), (top+bottom)/(top-bottom), -(zFar+zNear)/deltaZ,      -1.0f},
+			{ 0.0f,                      0.0f,                      -(2.0f*zFar*zNear)/deltaZ,  0.0f},
+		};
+		pglMultMatrixf(&m[0][0]);
+	}
+
+	if (!skip_eye_translate)
+		pglTranslatef(-iod * 0.5f, 0.0f, 0.0f);
 }
 
 static void GLProject(GLfloat objX, GLfloat objY, GLfloat objZ,
@@ -2988,6 +3126,10 @@ EXPORT void HWRAPI(DrawModel) (model_t *model, INT32 frameIndex, INT32 duration,
 EXPORT void HWRAPI(SetTransform) (FTransform *stransform)
 {
 	static boolean special_splitscreen;
+	SINT8 stereo_eye = 0;
+	float stereo_iod = 0.0f;
+	float stereo_focal = 1.0f;
+	boolean stereo_skybox = false;
 	boolean shearing = false;
 	float used_fov;
 
@@ -3014,6 +3156,10 @@ EXPORT void HWRAPI(SetTransform) (FTransform *stransform)
 		pglTranslatef(-stransform->x, -stransform->z, -stransform->y);
 
 		special_splitscreen = stransform->splitscreen;
+		stereo_eye = stransform->eyeOffset;
+		stereo_iod = stransform->iod;
+		stereo_focal = stransform->focalLength;
+		stereo_skybox = stransform->skyboxPass;
 		shearing = stransform->shearing;
 	}
 	else
@@ -3035,7 +3181,24 @@ EXPORT void HWRAPI(SetTransform) (FTransform *stransform)
 		pglTranslatef(0.0f, -fdy/BASEVIDHEIGHT, 0.0f);
 	}
 
-	if (special_splitscreen)
+	if (stereo_eye != 0)
+	{
+		// Splitscreen + stereo: each player's rect is half the screen
+		// height, so apply the same 17/10 vertical-FOV fudge mono
+		// splitscreen uses, plus the 2x aspect that compensates for the
+		// halved viewport. The off-axis frustum then operates over the
+		// composed FOV, producing correct per-eye geometry within each
+		// player's half.
+		float fov_used = used_fov;
+		float aspect   = ASPECT_RATIO;
+		if (special_splitscreen)
+		{
+			fov_used = (float)(atan(tan(fov_used*M_PIl/360)*0.8)*360/M_PIl);
+			aspect   = 2*ASPECT_RATIO;
+		}
+		GLPerspectiveStereo(fov_used, aspect, stereo_iod, stereo_focal, stereo_skybox);
+	}
+	else if (special_splitscreen)
 	{
 		used_fov = (float)(atan(tan(used_fov*M_PIl/360)*0.8)*360/M_PIl); // M_PIl (doomdef.h); MSVC's math.h has no M_PI
 		GLPerspective(used_fov, 2*ASPECT_RATIO);
@@ -3172,10 +3335,13 @@ EXPORT void HWRAPI(FlushScreenTextures) (void)
 	pglDeleteTextures(1, &startScreenWipe);
 	pglDeleteTextures(1, &endScreenWipe);
 	pglDeleteTextures(1, &finalScreenTexture);
+	pglDeleteTextures(1, &leiaTexture);
 	screentexture = 0;
 	startScreenWipe = 0;
 	endScreenWipe = 0;
 	finalScreenTexture = 0;
+	leiaTexture = 0;
+	leiaTextureW = leiaTextureH = 0;
 }
 
 // Create Screen to fade from
@@ -3441,7 +3607,7 @@ EXPORT void HWRAPI(MakeScreenFinalTexture) (void)
 	tex_downloaded = finalScreenTexture;
 }
 
-EXPORT void HWRAPI(DrawScreenFinalTexture)(int width, int height)
+EXPORT void HWRAPI(DrawScreenFinalTexture)(int width, int height, boolean stretch)
 {
 	float xfix, yfix;
 	float origaspect, newaspect;
@@ -3460,17 +3626,25 @@ EXPORT void HWRAPI(DrawScreenFinalTexture)(int width, int height)
 	xfix = 1/((float)(texsize)/((float)((screen_width))));
 	yfix = 1/((float)(texsize)/((float)((screen_height))));
 
-	origaspect = (float)screen_width / screen_height;
-	newaspect = (float)width / height;
-	if (origaspect < newaspect)
+	// stretch=true fills the viewport edge to edge. Stereo present paths
+	// need this: black bars from aspect mismatch break full-SbS displays,
+	// the SR weaver, and the interlaced composite source. Mono keeps the
+	// aspect-preserving path so the early-startup 320x200 loading window
+	// isn't stretched across the desktop.
+	if (!stretch)
 	{
-		xoff = origaspect / newaspect;
-		yoff = 1;
-	}
-	else if (origaspect > newaspect)
-	{
-		xoff = 1;
-		yoff = newaspect / origaspect;
+		origaspect = (float)screen_width / screen_height;
+		newaspect = (float)width / height;
+		if (origaspect < newaspect)
+		{
+			xoff = origaspect / newaspect;
+			yoff = 1;
+		}
+		else if (origaspect > newaspect)
+		{
+			xoff = 1;
+			yoff = newaspect / origaspect;
+		}
 	}
 
 	// float off[12];
@@ -3499,6 +3673,16 @@ EXPORT void HWRAPI(DrawScreenFinalTexture)(int width, int height)
 
 	pglViewport(0, 0, width, height);
 
+	// The eye loop / HUD pass leave arbitrary matrices behind; without
+	// resetting them a stretch=true quad can end up covering only part of
+	// the viewport.
+	pglMatrixMode(GL_PROJECTION);
+	pglPushMatrix();
+	pglLoadIdentity();
+	pglMatrixMode(GL_MODELVIEW);
+	pglPushMatrix();
+	pglLoadIdentity();
+
 	clearColour.red = clearColour.green = clearColour.blue = 0;
 	clearColour.alpha = 1;
 	ClearBuffer(true, false, &clearColour);
@@ -3510,7 +3694,172 @@ EXPORT void HWRAPI(DrawScreenFinalTexture)(int width, int height)
 	pglVertexPointer(3, GL_FLOAT, 0, off);
 
 	pglDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+	pglMatrixMode(GL_PROJECTION);
+	pglPopMatrix();
+	pglMatrixMode(GL_MODELVIEW);
+	pglPopMatrix();
+
 	tex_downloaded = finalScreenTexture;
 }
 
 #endif //HWRENDER
+
+// ==========================================================================
+//                                                       STEREOSCOPIC 3D
+// ==========================================================================
+// Mode integers MUST stay in sync with stereomode_t (r_stereo.h). Note that
+// R_StereoMode() substitutes several user-facing modes to a simpler internal
+// render mode before reaching here:
+//   ANAGLYPH / COLUMN_INTERLACED / CHECKERBOARD -> SBS (1)
+//   ROW_INTERLACED                              -> TAB (2)
+// so SetStereoMode in practice only sees SBS / TAB / LEIASR -- the eye
+// separation for Anaglyph/Interlaced/Checkerboard happens at present time via
+// composite fragment shaders in ogl_sdl.c. Eye is -1 (left) or +1 (right).
+
+EXPORT void HWRAPI(SetStereoMode)(INT32 mode, INT32 eye,
+                                  INT32 rect_x, INT32 rect_y, INT32 rect_w, INT32 rect_h)
+{
+	current_stereo_mode    = mode;
+	current_stereo_eye     = eye;
+	cached_stereo_rect_x   = rect_x;
+	cached_stereo_rect_y   = rect_y;
+	cached_stereo_rect_w   = rect_w;
+	cached_stereo_rect_h   = rect_h;
+
+	// Viewport+scissor are applied as the EXACT rect supplied by the caller.
+	// d_main.c (and R_DrawAcrossStereoEyes) compute the per-(mode, eye,
+	// player) rect via R_StereoComputePlayerEyeRect, so the layout choice
+	// (e.g. TaB+splitscreen as P1L/P2L/P1R/P2R stripes) is handled there.
+	// This entrypoint just applies what's been chosen.
+	pglViewport(rect_x, rect_y, rect_w, rect_h);
+	pglEnable(GL_SCISSOR_TEST);
+	pglScissor(rect_x, rect_y, rect_w, rect_h);
+
+	// No per-eye colour mask and no stencil: every mode that needs per-pixel
+	// eye selection does it at present time in a fragment shader instead.
+	pglColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
+// Re-applies the most recent SetStereoMode state. HWR_ClearView calls this
+// after GClipRect overwrites the viewport -- colour mask and scissor are
+// usually still correct, but the viewport needs the cached rect back.
+EXPORT void HWRAPI(ReapplyStereoMode)(void)
+{
+	if (current_stereo_mode == 0)
+		return;
+	pglViewport(cached_stereo_rect_x, cached_stereo_rect_y,
+	            cached_stereo_rect_w, cached_stereo_rect_h);
+	pglEnable(GL_SCISSOR_TEST);
+	pglScissor(cached_stereo_rect_x, cached_stereo_rect_y,
+	           cached_stereo_rect_w, cached_stereo_rect_h);
+}
+
+EXPORT void HWRAPI(ResetStereoMode)(void)
+{
+	current_stereo_mode = 0;
+	current_stereo_eye  = 0;
+
+	pglViewport(0, 0, screen_width, screen_height);
+	pglDisable(GL_SCISSOR_TEST);
+	pglColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
+// The SR weaver writes into the currently bound viewport, so the LeiaSR
+// present path sets it to the SDL window dimensions immediately before
+// weave() -- otherwise the woven output only fills the engine's (possibly
+// smaller) render rectangle.
+EXPORT void HWRAPI(SetPresentViewport)(INT32 width, INT32 height)
+{
+	pglViewport(0, 0, width, height);
+}
+
+// Tightly-fitted (NPOT) capture at exactly (width, height). The SR weaver
+// samples [0,1] across its input, so it can't reuse the power-of-two screen
+// texture -- it would see the padding. Recreates the texture whenever the
+// requested dimensions change.
+EXPORT void HWRAPI(MakeScreenTextureSized)(INT32 width, INT32 height)
+{
+	const boolean firstTime  = (leiaTexture == 0);
+	const boolean sizeChange = !firstTime && (leiaTextureW != width || leiaTextureH != height);
+
+	if (firstTime)
+		pglGenTextures(1, &leiaTexture);
+	pglBindTexture(GL_TEXTURE_2D, leiaTexture);
+
+	if (firstTime || sizeChange)
+	{
+		pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		Clamp2D(GL_TEXTURE_WRAP_S);
+		Clamp2D(GL_TEXTURE_WRAP_T);
+		pglCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, width, height, 0);
+		leiaTextureW = width;
+		leiaTextureH = height;
+	}
+	else
+	{
+		pglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+	}
+
+	tex_downloaded = leiaTexture;
+}
+
+EXPORT UINT32 HWRAPI(GetLeiaTextureID)(void)
+{
+	return (UINT32)leiaTexture;
+}
+
+// Composite the captured SbS/TaB frame into the chosen stereo display format
+// at (width, height), as a single fullscreen quad. Which half of the source a
+// fragment samples (or, for Dubois, how both halves mix) is decided entirely
+// by the shader the caller bound via HWR_DrawStereoComposite. This replaces an
+// earlier stencil-buffer row composite that proved driver-flaky.
+EXPORT void HWRAPI(DrawInterlacedComposite)(INT32 width, INT32 height)
+{
+	const float verts[12] = {
+		-1.0f, -1.0f, 0.0f,
+		-1.0f,  1.0f, 0.0f,
+		 1.0f,  1.0f, 0.0f,
+		 1.0f, -1.0f, 0.0f,
+	};
+	const float uvs[8] = {
+		0.0f, 0.0f,
+		0.0f, 1.0f,
+		1.0f, 1.0f,
+		1.0f, 0.0f,
+	};
+
+	pglViewport(0, 0, width, height);
+	pglEnable(GL_SCISSOR_TEST);
+	pglScissor(0, 0, width, height);
+
+	// Identity matrices so the (+-1, +-1) NDC quad maps 1:1 to the viewport
+	// regardless of any prior matrix state.
+	pglMatrixMode(GL_PROJECTION);
+	pglPushMatrix();
+	pglLoadIdentity();
+	pglMatrixMode(GL_MODELVIEW);
+	pglPushMatrix();
+	pglLoadIdentity();
+
+	pglBindTexture(GL_TEXTURE_2D, leiaTexture);
+	pglColor4ubv(white);
+	pglEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	pglVertexPointer(3, GL_FLOAT, 0, verts);
+	pglTexCoordPointer(2, GL_FLOAT, 0, uvs);
+	// PreparePolygon handles SetBlend and (critically) calls Shader_SetUniforms,
+	// which is what actually binds the program via pglUseProgram -- SetShader on
+	// its own only marks the state as changed. Without this the composite shader
+	// is selected but never bound, and the quad draws through fixed-function with
+	// full UV (i.e. the raw TaB/SbS source, no interleaving).
+	PreparePolygon(NULL, NULL, PF_NoDepthTest);
+	pglDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+	pglMatrixMode(GL_PROJECTION);
+	pglPopMatrix();
+	pglMatrixMode(GL_MODELVIEW);
+	pglPopMatrix();
+
+	tex_downloaded = leiaTexture;
+}

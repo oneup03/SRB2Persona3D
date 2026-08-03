@@ -105,6 +105,14 @@ void *hwSym(const char *funcName,void *handle)
 	GETFUNC(MakeScreenFinalTexture);
 	GETFUNC(DrawScreenFinalTexture);
 
+	GETFUNC(GetLeiaTextureID);
+	GETFUNC(MakeScreenTextureSized);
+	GETFUNC(SetStereoMode);
+	GETFUNC(ReapplyStereoMode);
+	GETFUNC(ResetStereoMode);
+	GETFUNC(DrawInterlacedComposite);
+	GETFUNC(SetPresentViewport);
+
 	GETFUNC(CompileShaders);
 	GETFUNC(CleanShaders);
 	GETFUNC(SetShader);

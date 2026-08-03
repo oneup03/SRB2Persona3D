@@ -6767,9 +6767,54 @@ void HWR_MakeScreenFinalTexture(void)
     HWD.pfnMakeScreenFinalTexture();
 }
 
-void HWR_DrawScreenFinalTexture(int width, int height)
+void HWR_DrawScreenFinalTexture(int width, int height, boolean stretch)
 {
-    HWD.pfnDrawScreenFinalTexture(width, height);
+    HWD.pfnDrawScreenFinalTexture(width, height, stretch);
+}
+
+// ==========================================================================
+//                                                       STEREOSCOPIC 3D
+// ==========================================================================
+
+void HWR_SetStereoMode(INT32 mode, INT32 eye, INT32 x, INT32 y, INT32 w, INT32 h)
+{
+	HWD.pfnSetStereoMode(mode, eye, x, y, w, h);
+}
+
+void HWR_ResetStereoMode(void)
+{
+	HWD.pfnResetStereoMode();
+}
+
+void HWR_MakeScreenTexture(void)
+{
+	HWD.pfnMakeScreenTexture();
+}
+
+void HWR_MakeScreenLeiaTextureSized(INT32 width, INT32 height)
+{
+	HWD.pfnMakeScreenTextureSized(width, height);
+}
+
+UINT32 HWR_GetScreenLeiaTextureID(void)
+{
+	return HWD.pfnGetLeiaTextureID();
+}
+
+void HWR_SetPresentViewport(INT32 width, INT32 height)
+{
+	HWD.pfnSetPresentViewport(width, height);
+}
+
+void HWR_DrawStereoComposite(INT32 shader_target, INT32 width, INT32 height)
+{
+	// SetShader only marks the shader state dirty; the actual glUseProgram
+	// happens inside the driver's PreparePolygon, which DrawInterlacedComposite
+	// calls. Bracketing with SetShader/UnSetShader here keeps the composite
+	// from leaking into the next frame's geometry.
+	HWD.pfnSetShader(shader_target);
+	HWD.pfnDrawInterlacedComposite(width, height);
+	HWD.pfnUnSetShader();
 }
 
 static inline UINT16 HWR_FindShaderDefs(UINT16 wadnum)
