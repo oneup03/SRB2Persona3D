@@ -77,6 +77,12 @@ void HWR_DrawScreenFinalTexture(int width, int height, boolean stretch);
 void HWR_SetStereoMode(INT32 mode, INT32 eye, INT32 x, INT32 y, INT32 w, INT32 h);
 void HWR_ResetStereoMode(void);
 
+// One unscissored full-screen colour clear. The per-view clear inside
+// HWR_RenderPlayerView is scissor-gated and so is skipped in stereo (it
+// would wipe the other eye's half); D_Display calls this once per frame
+// before the eye loop instead.
+void HWR_ClearFrameBuffer(void);
+
 // Captures the current framebuffer into the "screen snapshot" sampled by
 // HWR_DrawIntermissionBG and the underwater/heat wave. d_main.c calls this
 // once after the stereo eye loop completes so the snapshot contains BOTH

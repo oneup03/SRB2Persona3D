@@ -6813,6 +6813,16 @@ void HWR_ResetStereoMode(void)
 	HWD.pfnResetStereoMode();
 }
 
+void HWR_ClearFrameBuffer(void)
+{
+	FRGBAFloat clear = {0.0f, 0.0f, 0.0f, 1.0f};
+
+	// Drop the scissor first -- otherwise this clear is gated to whatever
+	// eye region was last set and only wipes half the screen.
+	HWD.pfnResetStereoMode();
+	HWD.pfnClearBuffer(true, false, &clear);
+}
+
 void HWR_MakeScreenTexture(void)
 {
 	HWD.pfnMakeScreenTexture();

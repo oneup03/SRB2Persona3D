@@ -48,6 +48,7 @@
 #include "p_setup.h"
 #include "p_saveg.h"
 #include "r_main.h"
+#include "r_stereo.h"
 #include "r_local.h"
 #include "s_sound.h"
 #include "st_stuff.h"
@@ -306,6 +307,15 @@ static void D_Display(void)
 	boolean forcerefresh = false;
 	static boolean wipe = false;
 	INT32 wipedefindex = 0;
+	// Stereoscopic 3D: the whole draw pipeline below runs once per eye.
+	// R_StereoMode() has already substituted the user's mode down to the
+	// internal render layout (SbS / TaB / LeiaSR), which is what the viewport
+	// maths and SetStereoMode want; the user's actual choice stays in
+	// cv_stereomode for the present-time composite dispatch.
+	const boolean stereo_active = R_StereoActive();
+	const stereomode_t stereo_mode = R_StereoMode();
+	const int stereo_num_eyes = R_StereoNumEyes();
+	int eye_pass;
 
 	if (dedicated)
 		return;
@@ -395,6 +405,25 @@ static void D_Display(void)
 	}
 	else
 		wipetypepre = -1;
+
+	// One unscissored colour clear for the whole frame. The per-view clear
+	// inside HWR_RenderPlayerView is skipped while stereo is active because
+	// it is scissor-gated and would wipe the previous eye's half.
+	if (stereo_active)
+		HWR_ClearFrameBuffer();
+
+	for (eye_pass = 0; eye_pass < stereo_num_eyes; eye_pass++)
+	{
+	if (stereo_active)
+	{
+		INT32 ex, ey, ew, eh;
+		const SINT8 eye = R_StereoEyeForPass(eye_pass);
+		// player_idx -1 = full-screen eye region, for the gamestate-switch
+		// overlays drawn before any per-player render.
+		R_StereoComputePlayerEyeRect(stereo_mode, eye, -1, &ex, &ey, &ew, &eh);
+		HWR_SetStereoMode(stereo_mode, eye, ex, ey, ew, eh);
+		R_BeginStereoEye(eye);
+	}
 
 	// do buffered drawing
 	switch (gamestate)
@@ -486,6 +515,15 @@ static void D_Display(void)
 				{
 					topleft = screens[0] + viewwindowy*vid.width + viewwindowx;
 					objectsdrawn = 0;
+					// Per-player eye rect must be applied BEFORE the render:
+					// HWR_ClearView's depth clear is scissor-gated, so it has to
+					// run with this player's eye region already active.
+					if (stereo_active)
+					{
+						INT32 px, py, pw, ph;
+						R_StereoComputePlayerEyeRect(stereo_mode, R_GetCurrentPlacementEye(), 0, &px, &py, &pw, &ph);
+						HWR_SetStereoMode(stereo_mode, R_GetCurrentPlacementEye(), px, py, pw, ph);
+					}
 	#ifdef HWRENDER
 					if (rendermode != render_soft)
 						HWR_RenderPlayerView(0, &players[displayplayer]);
@@ -498,6 +536,15 @@ static void D_Display(void)
 				// render the second screen
 				if (splitscreen && players[secondarydisplayplayer].mo)
 				{
+					// Per-player eye rect must be applied BEFORE the render:
+					// HWR_ClearView's depth clear is scissor-gated, so it has to
+					// run with this player's eye region already active.
+					if (stereo_active)
+					{
+						INT32 px, py, pw, ph;
+						R_StereoComputePlayerEyeRect(stereo_mode, R_GetCurrentPlacementEye(), 1, &px, &py, &pw, &ph);
+						HWR_SetStereoMode(stereo_mode, R_GetCurrentPlacementEye(), px, py, pw, ph);
+					}
 	#ifdef HWRENDER
 					if (rendermode != render_soft)
 						HWR_RenderPlayerView(1, &players[secondarydisplayplayer]);
@@ -540,6 +587,16 @@ static void D_Display(void)
 					usebuffer = true;
 				}
 				lastdraw = false;
+			}
+
+			// Back to the eye-half of the full screen so the HUD's base-coord
+			// V_PERPLAYER routing lands on top of the whole eye region rather
+			// than the last player's sub-rect.
+			if (stereo_active)
+			{
+				INT32 hx, hy, hw, hh;
+				R_StereoComputePlayerEyeRect(stereo_mode, R_GetCurrentPlacementEye(), -1, &hx, &hy, &hw, &hh);
+				HWR_SetStereoMode(stereo_mode, R_GetCurrentPlacementEye(), hx, hy, hw, hh);
 			}
 
 			PS_START_TIMING(ps_uitime);
@@ -596,6 +653,22 @@ static void D_Display(void)
 	// focus lost moved to M_Drawer
 
 	CON_Drawer();
+
+	if (stereo_active)
+		R_EndStereoEye();
+	} // end stereo eye loop
+
+	if (stereo_active)
+	{
+		HWR_ResetStereoMode();
+		// Refresh the screen snapshot now that BOTH eye passes have painted
+		// their HUDs. HWR_DoPostProcessor's capture fires mid-loop, before the
+		// second eye's HUD exists, which would leave the intermission backdrop
+		// showing the status bar in one eye only.
+		if (gamestate != GS_INTERMISSION)
+			HWR_MakeScreenTexture();
+	}
+	R_SetBackbufferIsStereo(stereo_active);
 
 	PS_STOP_TIMING(ps_uitime);
 
