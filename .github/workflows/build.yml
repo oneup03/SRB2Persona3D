@@ -1,5 +1,10 @@
 name: Build & release
 
+# Cross-compiles the 64-bit Windows build with MinGW-w64 on a Linux runner
+# (same toolchain as a local git-bash build, just prefixed), zips the staged
+# game folder, and publishes it to a rolling `latest` pre-release on pushes to
+# the primary branch. Tag pushes get a permanent release instead.
+
 on:
   push:
     branches: [srb2p_22]
@@ -18,52 +23,43 @@ concurrency:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - name: Install MinGW-w64 cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            make gcc-mingw-w64-x86-64-win32 binutils-mingw-w64-x86-64 zip
 
-      # The x86 build assembles tmap*.nas via a CustomBuild step that shells
-      # out to `nasm` (SRB2_common.props). build.ps1 would otherwise fetch a
-      # portable copy itself, but the action is faster and cached.
-      - name: Setup NASM
-        uses: ilammy/setup-nasm@v1
-
-      # build.ps1 is the same script the VS Code build task runs, so CI and
-      # local builds cannot drift. It builds Release|Win32 and stages exe +
-      # runtime DLLs + game data into deploy\Release.
+      # build.sh is the same script the VS Code build task runs, so CI and
+      # local builds can't drift. It picks up the x86_64-w64-mingw32-* tools
+      # automatically when cross-compiling.
       - name: Build and stage
-        shell: pwsh
-        run: .\build.ps1 -Configuration Release
+        run: bash build.sh
 
       - name: Package
         id: pkg
-        shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-
+          set -e
           # Version string lives on the first line of src/version.h.
-          $verLine = Get-Content src/version.h -TotalCount 1
-          if ($verLine -notmatch '"([0-9][0-9.]*)"') { throw "Could not parse version from src/version.h" }
-          $version = $Matches[1]
-          $short   = $env:GITHUB_SHA.Substring(0, 7)
+          VERSION=$(sed -n '1s/.*"\([0-9][0-9.]*\)".*/\1/p' src/version.h)
+          [ -n "$VERSION" ] || { echo "::error::could not parse version from src/version.h"; exit 1; }
+          SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
 
-          $zip = "SRB2Persona-$version-$short-Win32.zip"
-          if (Test-Path $zip) { Remove-Item -Force $zip }
-          Compress-Archive -Path 'deploy\Release\*' -DestinationPath $zip
+          ZIP="SRB2Persona-${VERSION}-${SHORT}-Win64.zip"
+          (cd deploy/Release && zip -qr "../../$ZIP" .)
 
-          "zip=$zip"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-          Write-Host "Packaged $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
+          echo "zip=$ZIP"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Packaged $ZIP ($(du -h "$ZIP" | cut -f1))"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SRB2Persona-Win32
+          name: SRB2Persona-Win64
           path: ${{ steps.pkg.outputs.zip }}
           if-no-files-found: error
 
@@ -71,7 +67,6 @@ jobs:
       # `latest` always points at a build of the current tip.
       - name: Publish rolling 'latest' pre-release
         if: github.event_name == 'push' && github.ref == 'refs/heads/srb2p_22'
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -81,26 +76,25 @@ jobs:
           set -e
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
 
-          cat > "$RUNNER_TEMP/notes.md" <<EOF
-          Automatic Windows build of SRB2 Persona v$VERSION from commit $GITHUB_SHA.
+          cat > /tmp/notes.md <<EOF
+          Automatic 64-bit Windows build of SRB2 Persona v$VERSION from commit $GITHUB_SHA.
 
-          The zip is self-contained: freshly built \`SRB2Persona.exe\`, the SDL2 /
-          audio runtime DLLs, and the v1.3.6 game data. Unzip anywhere and run
-          \`SRB2Persona.exe\`.
+          Built with MinGW-w64, the toolchain this fork targets. The zip is
+          self-contained: \`SRB2Persona.exe\`, the SDL2/audio runtime DLLs, and
+          the v1.3.6 game data. Unzip anywhere and run \`SRB2Persona.exe\`.
           EOF
 
           gh release create latest \
             --prerelease \
             --title "Latest SRB2 Persona build" \
             --target "$GITHUB_SHA" \
-            --notes-file "$RUNNER_TEMP/notes.md"
+            --notes-file /tmp/notes.md
 
           gh release upload latest "$ZIP" --clobber
 
       # Tag pushes get a permanent, non-prerelease release.
       - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

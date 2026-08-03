@@ -1,85 +1,71 @@
 {
+    // Build tasks for SRB2 Persona. These shell out to build.sh via git-bash,
+    // since the Makefile recipes need a Unix shell (sed, bash, etc.).
     "version": "2.0.0",
+    "options": {
+        "shell": {
+            "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "args": ["-c"]
+        }
+    },
     "tasks": [
         {
             "label": "Build SRB2 Persona (Release)",
-            "detail": "MSVC Win32 Release build, then stage exe + DLLs + game data into deploy\\Release",
             "type": "shell",
-            "command": "powershell",
-            "args": [
-                "-NoProfile",
-                "-ExecutionPolicy", "Bypass",
-                "-File", "${workspaceFolder}/build.ps1",
-                "-Configuration", "Release"
-            ],
+            "command": "./build.sh",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": "$msCompile",
+            "problemMatcher": ["$gcc"],
             "presentation": {
                 "reveal": "always",
                 "panel": "shared",
                 "clear": true
-            }
+            },
+            "detail": "MinGW-w64 build of bin/srb2win64.exe, then stage exe + DLLs + game data into deploy/Release"
+        },
+        {
+            "label": "Build SRB2 Persona (Clean)",
+            "type": "shell",
+            "command": "./build.sh --clean",
+            "group": "build",
+            "problemMatcher": ["$gcc"],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "detail": "Full rebuild: make clean for the Mingw64 target, then build and deploy"
         },
         {
             "label": "Build SRB2 Persona (Debug)",
-            "detail": "MSVC Win32 Debug build, then stage into deploy\\Debug",
             "type": "shell",
-            "command": "powershell",
-            "args": [
-                "-NoProfile",
-                "-ExecutionPolicy", "Bypass",
-                "-File", "${workspaceFolder}/build.ps1",
-                "-Configuration", "Debug"
-            ],
+            "command": "./build.sh --debug",
             "group": "build",
-            "problemMatcher": "$msCompile",
+            "problemMatcher": ["$gcc"],
             "presentation": {
                 "reveal": "always",
                 "panel": "shared",
                 "clear": true
-            }
+            },
+            "detail": "DEBUGMODE=1 build, staged into deploy/Debug"
         },
         {
-            "label": "Rebuild SRB2 Persona (Release)",
-            "detail": "Clean + full rebuild, then deploy",
+            "label": "Run SRB2 Persona",
             "type": "shell",
-            "command": "powershell",
-            "args": [
-                "-NoProfile",
-                "-ExecutionPolicy", "Bypass",
-                "-File", "${workspaceFolder}/build.ps1",
-                "-Configuration", "Release",
-                "-Rebuild"
-            ],
-            "group": "build",
-            "problemMatcher": "$msCompile",
+            "command": "./SRB2Persona.exe",
+            "options": {
+                "cwd": "${workspaceFolder}/deploy/Release"
+            },
+            "group": "test",
+            "problemMatcher": [],
+            "dependsOn": "Build SRB2 Persona (Release)",
             "presentation": {
                 "reveal": "always",
-                "panel": "shared",
-                "clear": true
-            }
-        },
-        {
-            "label": "Build & Run SRB2 Persona",
-            "detail": "Build + deploy, then launch the deployed game",
-            "type": "shell",
-            "command": "powershell",
-            "args": [
-                "-NoProfile",
-                "-ExecutionPolicy", "Bypass",
-                "-Command",
-                "& '${workspaceFolder}/build.ps1' -Configuration Release; if ($LASTEXITCODE -eq 0) { Start-Process -FilePath '${workspaceFolder}/deploy/Release/SRB2Persona.exe' -WorkingDirectory '${workspaceFolder}/deploy/Release' }"
-            ],
-            "group": "build",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "clear": true
-            }
+                "panel": "dedicated"
+            },
+            "detail": "Build (if needed) and launch the deployed game"
         }
     ]
 }
