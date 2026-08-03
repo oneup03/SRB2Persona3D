@@ -3453,6 +3453,7 @@ EXPORT void HWRAPI(EndScreenWipe)(void)
 EXPORT void HWRAPI(DrawIntermissionBG)(void)
 {
 	float xfix, yfix;
+	float u_origin = 0.0f, v_origin = 0.0f;
 	INT32 texsize = 2048;
 
 	const float screenVerts[12] =
@@ -3470,20 +3471,36 @@ EXPORT void HWRAPI(DrawIntermissionBG)(void)
 	if(screen_width <= 512)
 		texsize = 512;
 
-	xfix = 1/((float)(texsize)/((float)((screen_width))));
-	yfix = 1/((float)(texsize)/((float)((screen_height))));
+	// Same viewport-driven remap as PostImgRedraw: the backdrop samples a
+	// full-framebuffer capture, so inside a per-eye (or per-player) viewport
+	// it must show only that slice. Deriving from the live GL viewport covers
+	// mono, splitscreen and every stereo mode with one formula.
+	{
+		GLint vp[4];
+		pglGetIntegerv(GL_VIEWPORT, vp);
+		if (vp[2] <= 0 || vp[3] <= 0)
+		{
+			vp[0] = vp[1] = 0;
+			vp[2] = screen_width;
+			vp[3] = screen_height;
+		}
+		u_origin = (float)vp[0] / (float)texsize;
+		v_origin = (float)vp[1] / (float)texsize;
+		xfix = 1/((float)(texsize)/((float)(vp[2])));
+		yfix = 1/((float)(texsize)/((float)(vp[3])));
+	}
 
 	// const float screenVerts[12]
 
 	// float fix[8];
-	fix[0] = 0.0f;
-	fix[1] = 0.0f;
-	fix[2] = 0.0f;
-	fix[3] = yfix;
-	fix[4] = xfix;
-	fix[5] = yfix;
-	fix[6] = xfix;
-	fix[7] = 0.0f;
+	fix[0] = u_origin;
+	fix[1] = v_origin;
+	fix[2] = u_origin;
+	fix[3] = v_origin + yfix;
+	fix[4] = u_origin + xfix;
+	fix[5] = v_origin + yfix;
+	fix[6] = u_origin + xfix;
+	fix[7] = v_origin;
 
 	pglClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 

@@ -87,7 +87,7 @@
 #endif
 
 // maximum number of windowed modes (see windowedModes[][])
-#define MAXWINMODES (18)
+#define MAXWINMODES (21)
 
 /**	\brief
 */
@@ -153,6 +153,9 @@ static const char *fallback_resolution_name = "Fallback";
 // windowed video modes from which to choose from.
 static INT32 windowedModes[MAXWINMODES][2] =
 {
+	{3840,2160}, // 1.77 (4K UHD) -- headroom for stereo, where each eye
+	{3440,1440}, // 2.39 (UWQHD)  -- gets half the panel
+	{2560,1440}, // 1.77 (QHD)
 	{1920,1200}, // 1.60,6.00
 	{1920,1080}, // 1.66
 	{1680,1050}, // 1.60,5.25
