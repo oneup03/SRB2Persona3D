@@ -36,29 +36,47 @@ jobs:
         with:
           submodules: false
 
-      # Only the SR SDK submodule -- it's the sole thing the shim needs, and at
-      # ~82 MiB it's not worth pulling for any other job.
+      # bo3b/SR-lib is a PRIVATE repository, so this needs a PAT with read
+      # access to it, stored as the SUBMODULE_PAT repository secret. Without
+      # one the job skips the shim and the Windows zip simply ships without
+      # LeiaSR -- every other stereo mode is unaffected, and at runtime the
+      # engine reports LeiaSR unavailable and falls back to Side-by-Side.
       #
-      # Dropping the auth header is load-bearing: actions/checkout writes an
-      # http.https://github.com/.extraheader token into .git/config scoped to
-      # THIS repository, and git applies it to every github.com URL. Fetching a
-      # third-party repo (bo3b/SR-lib) with it gets a 401, surfacing as "could
-      # not read Username for 'https://github.com'" on the non-interactive
-      # runner. `git -c ...=` is not enough -- submodule update spawns child
-      # git processes that re-read the local config -- so it has to come out of
-      # .git/config. checkout's post-job cleanup copes with it already gone.
+      # Two auth details, both load-bearing:
+      #  - actions/checkout writes an http.https://github.com/.extraheader
+      #    token scoped to THIS repo into .git/config, and git applies it to
+      #    every github.com URL. It 401s on a third-party repo, so it has to
+      #    come out first.
+      #  - The credentials go into .git/config rather than `git -c`, because
+      #    submodule update spawns child git processes that re-read the local
+      #    config and would not see -c.
       - name: Fetch SR-lib
+        id: srlib
         shell: bash
+        env:
+          SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
         run: |
+          if [ -z "$SUBMODULE_PAT" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SUBMODULE_PAT is not set; skipping the LeiaSR shim. bo3b/SR-lib is private, so CI cannot fetch the SR SDK. The Windows zip will ship without LeiaSR support."
+            exit 0
+          fi
+
           git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf "https://github.com/"
           git submodule update --init libs/SR-lib
+          git config --local --remove-section url."https://x-access-token:${SUBMODULE_PAT}@github.com/" || true
+
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Build shim
+        if: steps.srlib.outputs.available == 'true'
         run: |
           cmake -S leiasr_shim -B leiasr_shim/build -A x64
           cmake --build leiasr_shim/build --config Release
 
       - name: Upload shim
+        if: steps.srlib.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: leiasr-shim

@@ -68,6 +68,12 @@ Visual Studio and the `libs/SR-lib` submodule are present, and skips it
 otherwise; if the DLL, the SR runtime, or SR hardware is missing at runtime,
 LeiaSR simply falls back to Side-by-Side.
 
+**`libs/SR-lib` (bo3b/SR-lib) is a private repository.** Locally that's
+transparent as long as your git credentials can reach it. In CI it needs a
+personal access token with read access to it, stored as the `SUBMODULE_PAT`
+repository secret -- without it the shim job skips with a warning and the
+Windows zip ships without LeiaSR. Every other stereo mode is unaffected.
+
 ### Game data
 
 The v1.3.6 data files (`srb2.pk3`, `SRB2P-*.pk3` / `.wad`, `patch.pk3`) are
