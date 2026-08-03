@@ -39,15 +39,19 @@ jobs:
       # Only the SR SDK submodule -- it's the sole thing the shim needs, and at
       # ~82 MiB it's not worth pulling for any other job.
       #
-      # The empty extraheader override is load-bearing: actions/checkout
-      # installs an http.https://github.com/.extraheader auth token scoped to
-      # THIS repository, and git applies it to every github.com URL. Cloning a
-      # third-party repo (bo3b/SR-lib) with it gets a 401, which surfaces as
-      # "could not read Username for 'https://github.com'". Clearing the header
-      # for this one command makes it an ordinary anonymous public clone.
+      # Dropping the auth header is load-bearing: actions/checkout writes an
+      # http.https://github.com/.extraheader token into .git/config scoped to
+      # THIS repository, and git applies it to every github.com URL. Fetching a
+      # third-party repo (bo3b/SR-lib) with it gets a 401, surfacing as "could
+      # not read Username for 'https://github.com'" on the non-interactive
+      # runner. `git -c ...=` is not enough -- submodule update spawns child
+      # git processes that re-read the local config -- so it has to come out of
+      # .git/config. checkout's post-job cleanup copes with it already gone.
       - name: Fetch SR-lib
         shell: bash
-        run: git -c http.https://github.com/.extraheader= submodule update --init libs/SR-lib
+        run: |
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git submodule update --init libs/SR-lib
 
       - name: Build shim
         run: |
