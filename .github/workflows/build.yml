@@ -36,10 +36,18 @@ jobs:
         with:
           submodules: false
 
-      # Only the SR SDK submodule, not every submodule -- it's the sole thing
-      # the shim needs and it's a large checkout.
+      # Only the SR SDK submodule -- it's the sole thing the shim needs, and at
+      # ~82 MiB it's not worth pulling for any other job.
+      #
+      # The empty extraheader override is load-bearing: actions/checkout
+      # installs an http.https://github.com/.extraheader auth token scoped to
+      # THIS repository, and git applies it to every github.com URL. Cloning a
+      # third-party repo (bo3b/SR-lib) with it gets a 401, which surfaces as
+      # "could not read Username for 'https://github.com'". Clearing the header
+      # for this one command makes it an ordinary anonymous public clone.
       - name: Fetch SR-lib
-        run: git submodule update --init --depth 1 libs/SR-lib
+        shell: bash
+        run: git -c http.https://github.com/.extraheader= submodule update --init libs/SR-lib
 
       - name: Build shim
         run: |
