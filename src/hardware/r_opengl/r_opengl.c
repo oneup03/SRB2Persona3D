@@ -3243,6 +3243,8 @@ EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2])
 	INT32 x, y;
 	float float_x, float_y, float_nextx, float_nexty;
 	float xfix, yfix;
+	float u_origin = 0.0f, v_origin = 0.0f; // texture-space offset of this viewport
+	GLint vp[4];
 	INT32 texsize = 2048;
 
 	const float blackBack[16] =
@@ -3259,12 +3261,47 @@ EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2])
 	if(screen_width <= 512)
 		texsize = 512;
 
+	// Derive the UV window from the CURRENT GL viewport rather than from
+	// screen_width/height. By the time we get here the viewport already
+	// encodes everything that matters, so one formula covers every case:
+	//   mono single-player      -> (0, 0, screen_w, screen_h)     = full UV
+	//   mono splitscreen P1/P2   -> top / bottom half              = half V
+	//   any stereo mode          -> the per-eye-per-player rect set by
+	//                               SetStereoMode (splitscreen composed in)
+	// Writing per-mode special cases instead does not compose with
+	// splitscreen -- you end up with a branch per (mode x splitscreen x
+	// player) combination, and they disagree.
+	pglGetIntegerv(GL_VIEWPORT, vp);
+	if (vp[2] <= 0 || vp[3] <= 0)
+	{
+		vp[0] = vp[1] = 0;
+		vp[2] = screen_width;
+		vp[3] = screen_height;
+	}
+
+	u_origin = (float)vp[0] / (float)texsize;
+	v_origin = (float)vp[1] / (float)texsize;
+
 	// X/Y stretch fix for all resolutions(!)
-	xfix = (float)(texsize)/((float)((screen_width)/(float)(SCREENVERTS-1)));
-	yfix = (float)(texsize)/((float)((screen_height)/(float)(SCREENVERTS-1)));
+	xfix = (float)(texsize)/((float)((vp[2])/(float)(SCREENVERTS-1)));
+	yfix = (float)(texsize)/((float)((vp[3])/(float)(SCREENVERTS-1)));
 
 	pglDisable(GL_DEPTH_TEST);
 	pglDisable(GL_BLEND);
+
+	// The wave geometry uses clip-space-ish coords (+-4.5 at z=4.4) tuned for
+	// a ~90 degree perspective. Left on the caller's projection it breaks under
+	// the splitscreen FOV correction (17/10 fudge + doubled aspect), leaving
+	// black bars and a squished interior. Push our own ortho so the wave fills
+	// whatever viewport is current, 1:1. Equivalent to
+	// glOrtho(-4.5, 4.5, -4.5, 4.5, -10, 10) without depending on pglOrtho.
+	pglMatrixMode(GL_PROJECTION);
+	pglPushMatrix();
+	pglLoadIdentity();
+	pglScalef(2.0f / 9.0f, 2.0f / 9.0f, -1.0f / 10.0f);
+	pglMatrixMode(GL_MODELVIEW);
+	pglPushMatrix();
+	pglLoadIdentity();
 
 	// const float blackBack[16]
 
@@ -3286,10 +3323,10 @@ EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2])
 			// Used for texture coordinates
 			// Annoying magic numbers to scale the square texture to
 			// a non-square screen..
-			float_x = (float)(x/(xfix));
-			float_y = (float)(y/(yfix));
-			float_nextx = (float)(x+1)/(xfix);
-			float_nexty = (float)(y+1)/(yfix);
+			float_x = u_origin + (float)(x/(xfix));
+			float_y = v_origin + (float)(y/(yfix));
+			float_nextx = u_origin + (float)(x+1)/(xfix);
+			float_nexty = v_origin + (float)(y+1)/(yfix);
 
 			// float stCoords[8];
 			stCoords[0] = float_x;
@@ -3325,6 +3362,11 @@ EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2])
 
 	pglEnable(GL_DEPTH_TEST);
 	pglEnable(GL_BLEND);
+
+	pglMatrixMode(GL_PROJECTION);
+	pglPopMatrix();
+	pglMatrixMode(GL_MODELVIEW);
+	pglPopMatrix();
 }
 
 // Sryder:	This needs to be called whenever the screen changes resolution in order to reset the screen textures to use
