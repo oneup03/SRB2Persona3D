@@ -25,6 +25,7 @@
 #include "../p_local.h"
 #include "../p_setup.h"
 #include "../r_local.h"
+#include "../r_stereo.h"
 #include "../r_patch.h"
 #include "../r_picformats.h"
 #include "../r_bsp.h"
@@ -5721,6 +5722,7 @@ static void HWR_DrawSkyBackground(player_t *player)
 			dometransform.roll = true;
 		}
 		dometransform.splitscreen = splitscreen;
+		dometransform.skyboxPass = true;
 
 		HWR_GetTexture(texturetranslation[skytexture]);
 
@@ -5839,6 +5841,15 @@ static inline void HWR_ClearView(void)
 	                 (INT32)(gl_viewwindowy + gl_viewheight),
 	                 ZCLIP_PLANE);
 	HWD.pfnClearBuffer(false, true, 0);
+
+	// GClipRect above overwrote the per-eye viewport with the player's view
+	// rect. The depth clear ran with the scissor still set by the most recent
+	// SetStereoMode call (d_main.c does one per player, before that player's
+	// HWR_RenderPlayerView), so depth was cleared inside the correct eye
+	// region. Now restore the cached eye viewport for the geometry that
+	// follows.
+	if (R_StereoActive())
+		HWD.pfnReapplyStereoMode();
 
 	//disable clip window - set to full size
 	// rem by Hurdler
@@ -5999,6 +6010,13 @@ void HWR_RenderSkyboxView(INT32 viewnumber, player_t *player)
 		atransform.roll = true;
 	}
 	atransform.splitscreen = splitscreen;
+	atransform.eyeOffset   = R_GetCurrentEye();
+	atransform.iod         = R_GetStereoIOD();
+	atransform.focalLength = R_GetStereoFocal();
+	// Sky at "infinity": collapsing the convergence plane makes parallax
+	// = full IPD at any distance, so the sky sits at maximum depth rather
+	// than fighting the user's IPD/focal settings.
+	atransform.skyboxPass  = true;
 
 	gl_fovlud = (float)(1.0l/tan((double)(fpov*M_PIl/360l)));
 
@@ -6134,7 +6152,12 @@ void HWR_RenderPlayerView(INT32 viewnumber, player_t *player)
 	if (cv_glshaders.value)
 		HWD.pfnSetShaderInfo(HWD_SHADERINFO_LEVELTIME, (INT32)leveltime); // The water surface shader needs the leveltime.
 
-	if (viewnumber == 0) // Only do it if it's the first screen being rendered
+	// Stereo: skipped here because the eye-region scissor active during each
+	// pass would gate this clear to the wrong rect -- on pass 1 the scissor
+	// covers the right (SbS) or bottom (TaB) half, and the clear would wipe
+	// pass 0's content. d_main.c does one unscissored full-screen clear
+	// before the eye loop instead.
+	if (viewnumber == 0 && !R_StereoActive()) // Only do it if it's the first screen being rendered
 		HWD.pfnClearBuffer(true, false, &ClearColor); // Clear the Color Buffer, stops HOMs. Also seems to fix the skybox issue on Intel GPUs.
 
 	PS_START_TIMING(ps_hw_skyboxtime);
@@ -6213,6 +6236,10 @@ void HWR_RenderPlayerView(INT32 viewnumber, player_t *player)
 		atransform.roll = true;
 	}
 	atransform.splitscreen = splitscreen;
+	atransform.eyeOffset   = R_GetCurrentEye();
+	atransform.iod         = R_GetStereoIOD();
+	atransform.focalLength = R_GetStereoFocal();
+	atransform.skyboxPass  = false;
 
 	gl_fovlud = (float)(1.0l/tan((double)(fpov*M_PIl/360l)));
 
