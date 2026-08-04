@@ -32,6 +32,7 @@
 #include "d_netfil.h" // for LUA_DumpFile
 #endif
 
+#include "r_stereo.h"
 #include "lua_script.h"
 #include "lua_libs.h"
 #include "lua_hook.h"
@@ -312,6 +313,14 @@ int LUA_PushGlobals(lua_State *L, const char *word)
 		return 1;
 	} else if (fastcmp(word,"leveltime")) {
 		lua_pushinteger(L, leveltime);
+		return 1;
+	} else if (fastcmp(word,"stereoeyepass")) {
+		// Which eye is being drawn this pass: 0 for the first (and for mono),
+		// 1 for the second. Stereo renders the entire draw path once per eye,
+		// so any HUD hook that MUTATES state -- advancing an animation timer,
+		// spawning something, playing a sound -- must guard that on pass 0 or
+		// it happens twice per frame. Pure drawing needs no guard.
+		lua_pushinteger(L, R_StereoActive() ? (R_GetCurrentPlacementEye() > 0 ? 1 : 0) : 0);
 		return 1;
 	} else if (fastcmp(word,"sstimer")) {
 		lua_pushinteger(L, sstimer);
