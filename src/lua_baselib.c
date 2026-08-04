@@ -19,6 +19,7 @@
 #include "r_main.h"
 #include "r_draw.h"
 #include "r_things.h" // R_Frame2Char etc
+#include "r_stereo.h" // R_GetStereoWorldHUDOffset
 #include "m_random.h"
 #include "s_sound.h"
 #include "g_game.h"
@@ -2632,6 +2633,27 @@ static int lib_rPointToDist2(lua_State *L)
 	return 1;
 }
 
+// Stereoscopic 3D depth for world-anchored HUD elements.
+//
+// Lua HUD code that projects a mobj's world position to screen coords (the
+// battle targeting reticles, floating HP bars, weakness markers and damage
+// numbers all do) draws flat 2D patches, so in stereo they land at the chrome
+// HUD's depth and visibly detach from the enemy they label. Feeding the
+// projected distance through this and adding the result to x puts them at the
+// same depth as the geometry they annotate.
+//
+// Argument is the distance from the eye to the object ALONG THE VIEW AXIS —
+// radial distance times cos of the angle off centre, which is exactly what a
+// perspective projection already has to compute. Returns 0 in mono, so call
+// sites need no conditional.
+static int lib_rStereoDepthOffset(lua_State *L)
+{
+	fixed_t viewdist = luaL_checkfixed(L, 1);
+	//HUDSAFE
+	lua_pushfixed(L, R_GetStereoWorldHUDOffset(viewdist));
+	return 1;
+}
+
 static int lib_rPointInSubsector(lua_State *L)
 {
 	fixed_t x = luaL_checkfixed(L, 1);
@@ -4230,6 +4252,7 @@ static luaL_Reg lib[] = {
 	{"R_PointToAngle2",lib_rPointToAngle2},
 	{"R_PointToDist",lib_rPointToDist},
 	{"R_PointToDist2",lib_rPointToDist2},
+	{"R_StereoDepthOffset",lib_rStereoDepthOffset},
 	{"R_PointInSubsector",lib_rPointInSubsector},
 	{"R_PointInSubsectorOrNil",lib_rPointInSubsectorOrNil},
 

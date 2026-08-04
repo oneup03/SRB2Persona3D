@@ -114,6 +114,17 @@ if [ "$DO_CLEAN" = 1 ]; then
 	make -C src MINGW64=1 SDL=1 "${MAKEFLAGS_EXTRA[@]}" clean >/dev/null 2>&1 || true
 fi
 
+# The Makefile build #includes config.h.in directly rather than generating a
+# config.h, and the generated .d dependency files don't list it. So editing an
+# asset MD5 in config.h.in leaves d_main.o stale and the game dies at startup
+# with "File is old, is corrupt or has been modified" naming a hash you already
+# updated. Touch the one consumer so make rebuilds it.
+D_MAIN_OBJ=$(find make -name d_main.o 2>/dev/null | head -n1)
+if [ -n "$D_MAIN_OBJ" ] && [ src/config.h.in -nt "$D_MAIN_OBJ" ]; then
+	echo ">> config.h.in changed, forcing d_main.c rebuild"
+	touch src/d_main.c
+fi
+
 echo ">> building srb2win64.exe"
 # -std=gnu17: this codebase predates the C23 "() means (void)" change that
 # became the default in GCC 14+. Passed via CPPFLAGS (not OPTS=) so the

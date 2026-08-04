@@ -527,7 +527,7 @@ static fixed_t V_StereoHUDOffset(INT32 flags)
 		return 0;
 	if (flags & V_NOSCALESTART)
 		return px * FRACUNIT;
-	return (fixed_t)(((INT64)px * BASEVIDWIDTH * FRACUNIT) / vid.width);
+	return R_StereoBaseOffsetFromPixels(px);
 }
 #endif
 

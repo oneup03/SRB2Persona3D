@@ -80,7 +80,29 @@ SINT8  R_GetCurrentPlacementEye(void);
 
 // HUD parallax helpers. Returns the X-pixel offset to apply to chrome HUD
 // elements during the current eye pass. Mono returns 0.
+//
+// Depth-fraction sign convention, shared by cv_stereohuddepth,
+// cv_stereocrosshairdepth and R_GetStereoWorldHUDOffset: 0 is the screen
+// plane, NEGATIVE is further into the screen (-1.0 == optical infinity),
+// POSITIVE is out toward the viewer. Lower is deeper.
 INT32 R_GetStereoHUDShift(void);
+
+// Convert a screen-pixel X offset into BASE (320-wide) fixed-point coords, the
+// space almost everything above the HWR_ layer draws in. Shared by
+// V_StereoHUDOffset and the world-depth helper below so the conversion only
+// exists once.
+fixed_t R_StereoBaseOffsetFromPixels(INT32 px);
+
+// Parallax for world-anchored HUD elements: 2D patches whose screen position
+// was derived by projecting a mobj's world position (battle targeting
+// reticles, floating HP bars, weakness markers, damage numbers). Pass the
+// distance from the eye to the object ALONG THE VIEW AXIS (i.e. radial
+// distance times cos of the angle off-centre) and add the result to the
+// element's x.
+//
+// The value is net of the flat chrome-HUD shift that V_Draw* applies on its
+// own, so callers add it on top rather than replacing anything.
+fixed_t R_GetStereoWorldHUDOffset(fixed_t viewdist);
 
 // Crosshair parallax. Per-frame raycast result is cached; this returns the
 // X-pixel offset to apply to the crosshair during the current eye pass.

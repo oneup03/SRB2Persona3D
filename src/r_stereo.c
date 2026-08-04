@@ -56,6 +56,12 @@ static CV_PossibleValue_t stereomode_cons_t[] = {
 //   stereofoclen  slider value × 1.0   = world units  (slider 100 = 100.0 wu)
 //   stereohuddepth slider value × 0.01 = -1..+1 fraction
 //
+// Sign convention for the depth fractions (see Stereo_DepthFracForDistance):
+// a fraction of 0 puts the element ON the screen plane, NEGATIVE values push
+// it BACK into the screen (-1.0 == optical infinity), and POSITIVE values pull
+// it OUT toward the viewer. So *lower is deeper* — the sliders read as
+// "distance", not "pop-out".
+//
 // SRB2 world-unit scale: player ≈32 wu tall (~6 ft), characters ≈50–200 wu
 // away, rooms 100s–1000s wu across. The asymptotic disparity is
 // iod / (focal × tan(fov/2)), so depth differentiation requires iod that's
@@ -67,8 +73,8 @@ static CV_PossibleValue_t stereomode_cons_t[] = {
 // visually clamps.
 static CV_PossibleValue_t stereoipd_cons_t[]      = {{10,  "MIN"}, {400,  "MAX"}, {0, NULL}};   // 1.0–10.0 wu (default 6.0 wu sits at ~56%)
 static CV_PossibleValue_t stereofoclen_cons_t[]   = {{50,  "MIN"}, {250,  "MAX"}, {0, NULL}};   // 50–150 wu (default 100 wu centered)
-static CV_PossibleValue_t stereohuddepth_cons_t[]       = {{-100, "MIN"}, { 50, "MAX"}, {0, NULL}};   // -1.00..+0.50 fraction (HUD biased toward popping out by default)
-static CV_PossibleValue_t stereocrosshairdepth_cons_t[] = {{-150, "MIN"}, {  0, "MAX"}, {0, NULL}};   // -1.50..0.00 fraction (crosshair sits at or in front of screen plane)
+static CV_PossibleValue_t stereohuddepth_cons_t[]       = {{-100, "MIN"}, { 50, "MAX"}, {0, NULL}};   // -1.00 (infinity) .. +0.50 (half the convergence distance, pops out)
+static CV_PossibleValue_t stereocrosshairdepth_cons_t[] = {{-150, "MIN"}, {  0, "MAX"}, {0, NULL}};   // -1.50 .. 0.00 — crosshair sits at or behind the screen plane
 
 static void Stereo_OnChange(void);
 
@@ -76,8 +82,8 @@ consvar_t cv_stereomode             = CVAR_INIT("stereomode",             "Off",
 consvar_t cv_stereoipd              = CVAR_INIT("stereoipd",              "60",  CV_SAVE,         stereoipd_cons_t,     NULL);   // ×0.1 → 6.0 wu IPD (~5× human-scale, clear depth pop at default focal)
 consvar_t cv_stereofoclen           = CVAR_INIT("stereofoclen",           "100", CV_SAVE,         stereofoclen_cons_t,  NULL);   // ×1.0 → 100.0 wu convergence (typical scene viewing distance)
 consvar_t cv_stereoswap             = CVAR_INIT("stereoswap",             "Off",  CV_SAVE,         CV_OnOff,             NULL);
-consvar_t cv_stereohuddepth         = CVAR_INIT("stereohuddepth",         "-30",  CV_SAVE,         stereohuddepth_cons_t,       NULL);   // -0.30 fraction — HUD pops slightly forward of screen
-consvar_t cv_stereocrosshairdepth   = CVAR_INIT("stereocrosshairdepth",   "-100", CV_SAVE,         stereocrosshairdepth_cons_t, NULL);   // -1.00 fraction — crosshair sits well in front of screen
+consvar_t cv_stereohuddepth         = CVAR_INIT("stereohuddepth",         "-30",  CV_SAVE,         stereohuddepth_cons_t,       NULL);   // -0.30 fraction — HUD sits a little way behind the screen plane (~1.4× focal)
+consvar_t cv_stereocrosshairdepth   = CVAR_INIT("stereocrosshairdepth",   "-100", CV_SAVE,         stereocrosshairdepth_cons_t, NULL);   // -1.00 fraction — crosshair sits at optical infinity
 
 // current_eye holds the *perspective* eye for the active pass — it tracks
 // which eye's view is being rendered (and is what HUD/crosshair shifts and
@@ -313,6 +319,84 @@ INT32 R_GetStereoCrosshairShift(void)
 	const float depth_frac = cv_stereocrosshairdepth.value / 100.0f;
 	const float ipd        = cv_stereoipd.value * 0.1f;
 	return (INT32)(-current_eye * depth_frac * Stereo_PixelShiftPerEye(ipd, current_focal));
+}
+
+// Depth fraction (the same -1..+1 quantity the HUD/crosshair CVARs store) that
+// puts an element at world distance `z` along the view axis.
+//
+// Derivation. For a point at view-space depth z the off-axis rig in
+// GLPerspectiveStereo produces an NDC x-offset from the mono projection of
+//
+//   ndc_dx = s * (ipd/2) * (1/focal - 1/z) / tan(fov/2)
+//
+// where s is the eye sign. (Both halves of the rig contribute: the frustum
+// shear gives the 1/focal term, the eye translate gives the -1/z term. Note
+// this is independent of the point's screen x, so one scalar offset is exact
+// for anything drawn at that depth, anywhere on screen.)
+//
+// The flat HUD shift is -s * frac * P where P is the asymptotic per-eye shift
+// Stereo_PixelShiftPerEye returns. Equating the two and solving:
+//
+//   frac = focal/z - 1
+//
+// which sanity-checks at the endpoints: z == focal gives 0 (screen plane) and
+// z == infinity gives -1 (optical infinity). Confirms "lower is deeper".
+#define STEREO_WORLD_DEPTH_MAX 2.0f   // clamp at z = focal/3; nearer than that the
+                                      // parallax runs away and the icon would tear
+                                      // off the object it belongs to
+static float Stereo_DepthFracForDistance(fixed_t viewdist)
+{
+	const float z = FIXED_TO_FLOAT(viewdist);
+	float frac;
+
+	if (z <= 0.0f)   // at or behind the eye — caller shouldn't be drawing anyway
+		return 0.0f;
+
+	frac = (current_focal / z) - 1.0f;
+
+	if (frac > STEREO_WORLD_DEPTH_MAX)
+		frac = STEREO_WORLD_DEPTH_MAX;
+	else if (frac < -1.0f)   // unreachable for z > 0, but keep the invariant explicit
+		frac = -1.0f;
+
+	return frac;
+}
+
+fixed_t R_StereoBaseOffsetFromPixels(INT32 px)
+{
+	if (px == 0 || vid.width <= 0)
+		return 0;
+
+	return (fixed_t)(((INT64)px * BASEVIDWIDTH * FRACUNIT) / vid.width);
+}
+
+// Parallax for world-anchored HUD elements — the battle UI's targeting
+// reticles, floating HP bars, weakness/block/repel markers, damage numbers and
+// turn-order digits. These are 2D patches, but they're positioned by projecting
+// a mobj's world position to screen coords, so at the flat chrome-HUD depth
+// they visibly detach from the enemy they label.
+//
+// Returns the extra x offset, in BASE (320-wide) fixed-point coords, to add to
+// such an element's position. It is NET of the chrome-HUD shift that
+// V_StereoHUDOffset will separately apply inside every V_Draw* call — the
+// caller adds this on top and the two together land the element at world depth.
+fixed_t R_GetStereoWorldHUDOffset(fixed_t viewdist)
+{
+	float world_frac, hud_frac, ipd;
+	INT32 px;
+
+	if (!R_StereoActive() || current_eye == STEREO_EYE_MONO)
+		return 0;
+	if (cv_stereoipd.value == 0)
+		return 0;
+
+	world_frac = Stereo_DepthFracForDistance(viewdist);
+	hud_frac   = cv_stereohuddepth.value / 100.0f;
+	ipd        = cv_stereoipd.value * 0.1f;
+
+	px = (INT32)(-current_eye * (world_frac - hud_frac) * Stereo_PixelShiftPerEye(ipd, current_focal));
+
+	return R_StereoBaseOffsetFromPixels(px);
 }
 
 void R_UpdateStereoCrosshairTrace(player_t *player)
