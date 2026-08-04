@@ -227,7 +227,13 @@ void OglSdlFinishUpdate(boolean waitvbl)
 
 	oldwaitvbl = waitvbl;
 
-	SDL_GetWindowSize(window, &sdlw, &sdlh);
+	// Drawable size, NOT SDL_GetWindowSize: the latter is in logical units,
+	// which diverge from real framebuffer pixels on a DPI-scaled display.
+	// Everything below is pixel-exact work -- stretching the render to fill
+	// the panel, recapturing it, and handing it to the interlaced/checkerboard
+	// composites or the SR weaver -- so a logical size silently scales all of
+	// it wrong and the stereo output turns to garbage.
+	SDL_GL_GetDrawableSize(window, &sdlw, &sdlh);
 
 	// Stereo present paths stretch the rendered backbuffer to fill the window:
 	// black bars from aspect mismatch would break a full-SbS display's signal,

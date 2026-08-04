@@ -5722,7 +5722,15 @@ static void HWR_DrawSkyBackground(player_t *player)
 			dometransform.roll = true;
 		}
 		dometransform.splitscreen = splitscreen;
-		dometransform.skyboxPass = true;
+		// The sky dome needs the same per-eye state as the world transform.
+		// Setting only skyboxPass is not enough: SetTransform gates the whole
+		// stereo path on eyeOffset != 0, so without these the dome falls back
+		// to a mono projection and the sky renders at exactly zero parallax,
+		// i.e. pinned to the screen plane instead of sitting at infinity.
+		dometransform.eyeOffset   = R_GetCurrentEye();
+		dometransform.iod         = R_GetStereoIOD();
+		dometransform.focalLength = R_GetStereoFocal();
+		dometransform.skyboxPass  = true;
 
 		HWR_GetTexture(texturetranslation[skytexture]);
 

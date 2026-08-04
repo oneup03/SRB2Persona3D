@@ -1717,6 +1717,62 @@ static void Impl_VideoSetupBuffer(void)
 	}
 }
 
+// Opt this process into per-monitor DPI awareness.
+//
+// Without it Windows silently virtualises the window on any display
+// scaled above 100%: we ask for an NxM window, the OS hands us a smaller
+// backbuffer and stretches the result to the panel. For ordinary
+// rendering that only costs sharpness, but it breaks every stereo mode
+// that depends on hitting exact physical pixels -- the interlaced and
+// checkerboard composites lose their row/column parity, and the LeiaSR
+// weave lands off the panel's lens grid, which is what turns the output
+// into garbage rather than merely soft.
+//
+// Must run before the first window is created, so this is called at the
+// top of I_StartupGraphics. SDL 2.0.10 predates
+// SDL_HINT_WINDOWS_DPI_AWARENESS, so it has to go through the Win32 API
+// directly, resolved dynamically to keep running on older Windows:
+//   Win10 1703+  SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)
+//   Win8.1+      SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE)
+//   Vista+       SetProcessDPIAware()
+static void I_SetDPIAwareness(void)
+{
+#ifdef _WIN32
+	typedef BOOL (WINAPI *SetCtxFn)(HANDLE);
+	typedef HRESULT (WINAPI *SetAwarenessFn)(int);
+	typedef BOOL (WINAPI *SetLegacyFn)(void);
+	HMODULE user32, shcore;
+
+	user32 = GetModuleHandleA("user32.dll");
+	if (user32)
+	{
+		SetCtxFn setctx = (SetCtxFn)(void *)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+		// -4 == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+		if (setctx && setctx((HANDLE)(intptr_t)-4))
+			return;
+	}
+
+	shcore = LoadLibraryA("shcore.dll");
+	if (shcore)
+	{
+		SetAwarenessFn setaware = (SetAwarenessFn)(void *)GetProcAddress(shcore, "SetProcessDpiAwareness");
+		if (setaware && setaware(2) == S_OK) // 2 == PROCESS_PER_MONITOR_DPI_AWARE
+		{
+			FreeLibrary(shcore);
+			return;
+		}
+		FreeLibrary(shcore);
+	}
+
+	if (user32)
+	{
+		SetLegacyFn setlegacy = (SetLegacyFn)(void *)GetProcAddress(user32, "SetProcessDPIAware");
+		if (setlegacy)
+			setlegacy();
+	}
+#endif
+}
+
 // Native window handle, for the LeiaSR weaver bridge. The SR runtime binds
 // its weaver to an HWND; everywhere else this is a no-op returning NULL, which
 // R_LeiaSR_Init treats as "SR unavailable" and falls back to plain SbS.
@@ -1742,6 +1798,9 @@ void *I_GetWindowHandle(void)
 
 void I_StartupGraphics(void)
 {
+	// Before any window exists -- see I_SetDPIAwareness.
+	I_SetDPIAwareness();
+
 	if (dedicated)
 	{
 		rendermode = render_none;

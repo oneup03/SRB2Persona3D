@@ -3245,7 +3245,7 @@ EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2])
 	float xfix, yfix;
 	float u_origin = 0.0f, v_origin = 0.0f; // texture-space offset of this viewport
 	GLint vp[4];
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 
 	const float blackBack[16] =
 	{
@@ -3255,11 +3255,12 @@ EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2])
 		16.0f, -16.0f, 6.0f
 	};
 
-	// Use a power of two texture, dammit
-	if(screen_width <= 1024)
-		texsize = 1024;
-	if(screen_width <= 512)
-		texsize = 512;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	// Derive the UV window from the CURRENT GL viewport rather than from
 	// screen_width/height. By the time we get here the viewport already
@@ -3389,14 +3390,15 @@ EXPORT void HWRAPI(FlushScreenTextures) (void)
 // Create Screen to fade from
 EXPORT void HWRAPI(StartScreenWipe) (void)
 {
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 	boolean firstTime = (startScreenWipe == 0);
 
-	// Use a power of two texture, dammit
-	if(screen_width <= 512)
-		texsize = 512;
-	else if(screen_width <= 1024)
-		texsize = 1024;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	// Create screen texture
 	if (firstTime)
@@ -3420,14 +3422,15 @@ EXPORT void HWRAPI(StartScreenWipe) (void)
 // Create Screen to fade to
 EXPORT void HWRAPI(EndScreenWipe)(void)
 {
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 	boolean firstTime = (endScreenWipe == 0);
 
-	// Use a power of two texture, dammit
-	if(screen_width <= 512)
-		texsize = 512;
-	else if(screen_width <= 1024)
-		texsize = 1024;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	// Create screen texture
 	if (firstTime)
@@ -3454,7 +3457,7 @@ EXPORT void HWRAPI(DrawIntermissionBG)(void)
 {
 	float xfix, yfix;
 	float u_origin = 0.0f, v_origin = 0.0f;
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 
 	const float screenVerts[12] =
 	{
@@ -3466,10 +3469,12 @@ EXPORT void HWRAPI(DrawIntermissionBG)(void)
 
 	float fix[8];
 
-	if(screen_width <= 1024)
-		texsize = 1024;
-	if(screen_width <= 512)
-		texsize = 512;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	// Same viewport-driven remap as PostImgRedraw: the backdrop samples a
 	// full-framebuffer capture, so inside a per-eye (or per-player) viewport
@@ -3517,7 +3522,7 @@ EXPORT void HWRAPI(DrawIntermissionBG)(void)
 // Do screen fades!
 EXPORT void HWRAPI(DoScreenWipe)(void)
 {
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 	float xfix, yfix;
 
 	INT32 fademaskdownloaded = tex_downloaded; // the fade mask that has been set
@@ -3540,11 +3545,12 @@ EXPORT void HWRAPI(DoScreenWipe)(void)
 		1.0f, 1.0f
 	};
 
-	// Use a power of two texture, dammit
-	if(screen_width <= 1024)
-		texsize = 1024;
-	if(screen_width <= 512)
-		texsize = 512;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	xfix = 1/((float)(texsize)/((float)((screen_width))));
 	yfix = 1/((float)(texsize)/((float)((screen_height))));
@@ -3608,14 +3614,15 @@ EXPORT void HWRAPI(DoScreenWipe)(void)
 // Create a texture from the screen.
 EXPORT void HWRAPI(MakeScreenTexture) (void)
 {
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 	boolean firstTime = (screentexture == 0);
 
-	// Use a power of two texture, dammit
-	if(screen_width <= 512)
-		texsize = 512;
-	else if(screen_width <= 1024)
-		texsize = 1024;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	// Create screen texture
 	if (firstTime)
@@ -3638,14 +3645,15 @@ EXPORT void HWRAPI(MakeScreenTexture) (void)
 
 EXPORT void HWRAPI(MakeScreenFinalTexture) (void)
 {
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 	boolean firstTime = (finalScreenTexture == 0);
 
-	// Use a power of two texture, dammit
-	if(screen_width <= 512)
-		texsize = 512;
-	else if(screen_width <= 1024)
-		texsize = 1024;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	// Create screen texture
 	if (firstTime)
@@ -3672,15 +3680,17 @@ EXPORT void HWRAPI(DrawScreenFinalTexture)(int width, int height, boolean stretc
 	float origaspect, newaspect;
 	float xoff = 1, yoff = 1; // xoffset and yoffset for the polygon to have black bars around the screen
 	FRGBAFloat clearColour;
-	INT32 texsize = 2048;
+	INT32 texsize = 512;
 
 	float off[12];
 	float fix[8];
 
-	if(screen_width <= 1024)
-		texsize = 1024;
-	if(screen_width <= 512)
-		texsize = 512;
+	// Use a power of two texture that actually COVERS the screen. The old
+	// ladder capped out at 2048, so at 2560x1440 or 3840x2160 the capture
+	// was truncated and anything sampling past 2048px -- the right half of
+	// an SbS frame, for instance -- read garbage.
+	while (texsize < screen_width || texsize < screen_height)
+		texsize <<= 1;
 
 	xfix = 1/((float)(texsize)/((float)((screen_width))));
 	yfix = 1/((float)(texsize)/((float)((screen_height))));
