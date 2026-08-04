@@ -87,7 +87,12 @@
 #endif
 
 // maximum number of windowed modes (see windowedModes[][])
-#define MAXWINMODES (24)
+// NOTE: windowedModes[] is index-locked to the v_modes table in the pk3's
+// Lua/MENU/SYSMENUS/SystemMenus.LUA -- Persona's menu selects a resolution by
+// running `vid_mode (index-1)`, not by name. Inserting or reordering an entry
+// here silently makes that menu set the wrong resolution until the Lua list is
+// resynced entry-for-entry (and its `setres` default re-pointed).
+#define MAXWINMODES (25)
 
 /**	\brief
 */
@@ -153,6 +158,16 @@ static const char *fallback_resolution_name = "Fallback";
 // windowed video modes from which to choose from.
 static INT32 windowedModes[MAXWINMODES][2] =
 {
+	// Full-SbS signal format. Every other entry here splits ONE frame between
+	// the eyes, so in SbS each eye ends up anamorphic (at 3840x2160 an eye is
+	// 1920x2160, i.e. 16:9 content squeezed into 8:9) and the display has to
+	// unsqueeze it -- that's half-SbS, and it's what a 3D TV's "SBS" input
+	// expects. A player or headset set to FULL SbS does no unsqueezing, so the
+	// source frame must already be double-width with each eye at its native
+	// aspect. Use this WINDOWED: fullscreen is FULLSCREEN_DESKTOP, so the
+	// present pass would just stretch the frame back out to the panel.
+	{3840,1080}, // full SbS -- 1920x1080 per eye
+
 	{3840,2160}, // 1.77 (4K UHD)  -- headroom matters more in stereo, where
 	{3200,1800}, // 1.77 (QHD+)       each eye only gets half the panel
 	{3440,1440}, // 2.39 (UWQHD)
