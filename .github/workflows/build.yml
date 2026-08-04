@@ -48,9 +48,12 @@ jobs:
       #    token scoped to THIS repo into .git/config, and git applies it to
       #    every github.com URL. It 401s on a third-party repo, so it has to
       #    come out first.
-      #  - The credentials go into .git/config rather than `git -c`, because
-      #    submodule update spawns child git processes that re-read the local
-      #    config and would not see -c.
+      #  - The credential rewrite has to be GLOBAL, not --local and not `git -c`.
+      #    submodule update spawns a separate `git clone` for the submodule, and
+      #    that child process reads global/system config plus its own (not-yet-
+      #    existing) repo config -- it never sees the parent's local config, so a
+      #    --local insteadOf rewrite is silently ignored and the clone falls back
+      #    to unauthenticated, which on a private repo means a credential prompt.
       - name: Fetch SR-lib
         id: srlib
         shell: bash
@@ -64,9 +67,9 @@ jobs:
           fi
 
           git config --local --unset-all http.https://github.com/.extraheader || true
-          git config --local url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf "https://github.com/"
           git submodule update --init libs/SR-lib
-          git config --local --remove-section url."https://x-access-token:${SUBMODULE_PAT}@github.com/" || true
+          git config --global --remove-section url."https://x-access-token:${SUBMODULE_PAT}@github.com/" || true
 
           echo "available=true" >> "$GITHUB_OUTPUT"
 
