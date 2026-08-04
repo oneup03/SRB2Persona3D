@@ -37,7 +37,8 @@ jobs:
           submodules: false
 
       # bo3b/SR-lib is a PRIVATE repository, so this needs a PAT with read
-      # access to it, stored as the SUBMODULE_PAT repository secret. Without
+      # access to it, stored as the SHARED_PAT repository secret (SUBMODULE_PAT
+      # is accepted as a fallback name). Without
       # one the job skips the shim and the Windows zip simply ships without
       # LeiaSR -- every other stereo mode is unaffected, and at runtime the
       # engine reports LeiaSR unavailable and falls back to Side-by-Side.
@@ -54,11 +55,11 @@ jobs:
         id: srlib
         shell: bash
         env:
-          SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
+          SUBMODULE_PAT: ${{ secrets.SHARED_PAT || secrets.SUBMODULE_PAT }}
         run: |
           if [ -z "$SUBMODULE_PAT" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::SUBMODULE_PAT is not set; skipping the LeiaSR shim. bo3b/SR-lib is private, so CI cannot fetch the SR SDK. The Windows zip will ship without LeiaSR support."
+            echo "::warning::No SHARED_PAT/SUBMODULE_PAT secret; skipping the LeiaSR shim. bo3b/SR-lib is private, so CI cannot fetch the SR SDK. The Windows zip will ship without LeiaSR support."
             exit 0
           fi
 
