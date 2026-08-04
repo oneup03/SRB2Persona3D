@@ -22,6 +22,7 @@
 #include "hu_stuff.h"
 #include "f_finale.h"
 #include "r_draw.h"
+#include "r_stereo.h"
 #include "console.h"
 
 #include "i_video.h" // rendermode
@@ -508,6 +509,28 @@ static inline UINT8 transmappedpdraw(const UINT8 *dest, const UINT8 *source, fix
 }
 
 // Draws a patch scaled to arbitrary size.
+#ifdef HWRENDER
+// Stereoscopic 3D HUD parallax.
+//
+// R_GetStereoHUDShift() is a SCREEN-PIXEL offset, but everything above the
+// HWR_ layer addresses the screen in base 320x200 coordinates (except when
+// V_NOSCALESTART is set, where coordinates are already real pixels). Convert
+// accordingly, otherwise the HUD shifts by a wildly wrong amount at any
+// resolution other than base.
+//
+// Returns a fixed_t so callers can add it straight onto their x.
+static fixed_t V_StereoHUDOffset(INT32 flags)
+{
+	const INT32 px = R_GetStereoHUDShift();
+
+	if (px == 0 || vid.width <= 0)
+		return 0;
+	if (flags & V_NOSCALESTART)
+		return px * FRACUNIT;
+	return (fixed_t)(((INT64)px * BASEVIDWIDTH * FRACUNIT) / vid.width);
+}
+#endif
+
 void V_DrawStretchyFixedPatch(fixed_t x, fixed_t y, fixed_t pscale, fixed_t vscale, INT32 scrn, patch_t *patch, const UINT8 *colormap)
 {
 	UINT8 (*patchdrawfunc)(const UINT8*, const UINT8*, fixed_t);
@@ -531,7 +554,7 @@ void V_DrawStretchyFixedPatch(fixed_t x, fixed_t y, fixed_t pscale, fixed_t vsca
 	//if (rendermode != render_soft && !con_startup)		// Why?
 	if (rendermode == render_opengl)
 	{
-		HWR_DrawStretchyFixedPatch(patch, x, y, pscale, vscale, scrn, colormap);
+		HWR_DrawStretchyFixedPatch(patch, x + V_StereoHUDOffset(scrn), y, pscale, vscale, scrn, colormap);
 		return;
 	}
 #endif
@@ -824,7 +847,7 @@ void V_DrawIndexStretchyPatch(fixed_t x, fixed_t y, fixed_t pscale, fixed_t vsca
 	// oh please
 	if (rendermode != render_soft && !con_startup)
 	{
-		HWR_DrawIndexPatch(patch, x, y, pscale, vscale, scrn, c);
+		HWR_DrawIndexPatch(patch, x + V_StereoHUDOffset(scrn), y, pscale, vscale, scrn, c);
 		return;
 	}
 #endif
@@ -1136,7 +1159,7 @@ void V_DrawCroppedPatch(fixed_t x, fixed_t y, fixed_t pscale, fixed_t vscale, IN
 	//if (rendermode != render_soft && !con_startup)		// Not this again
 	if (rendermode == render_opengl)
 	{
-		HWR_DrawCroppedPatch(patch,x,y,pscale,vscale,scrn,colormap,sx,sy,w,h);
+		HWR_DrawCroppedPatch(patch,x + V_StereoHUDOffset(scrn),y,pscale,vscale,scrn,colormap,sx,sy,w,h);
 		return;
 	}
 #endif
@@ -1512,7 +1535,7 @@ void V_DrawFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 c)
 	//if (rendermode != render_soft && !con_startup)		// Not this again
 	if (rendermode == render_opengl)
 	{
-		HWR_DrawFill(x, y, w, h, c);
+		HWR_DrawFill(x + (V_StereoHUDOffset(c) / FRACUNIT), y, w, h, c);
 		return;
 	}
 #endif
@@ -1710,7 +1733,7 @@ void V_DrawFillConsoleMap(INT32 x, INT32 y, INT32 w, INT32 h, INT32 c)
 	if (rendermode == render_opengl)
 	{
 		UINT32 hwcolor = V_GetHWConsBackColor();
-		HWR_DrawConsoleFill(x, y, w, h, c, hwcolor);	// we still use the regular color stuff but only for flags. actual draw color is "hwcolor" for this.
+		HWR_DrawConsoleFill(x + (V_StereoHUDOffset(c) / FRACUNIT), y, w, h, c, hwcolor);	// we still use the regular color stuff but only for flags. actual draw color is "hwcolor" for this.
 		return;
 	}
 #endif
@@ -1907,7 +1930,7 @@ void V_DrawFadeFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 c, UINT16 color, U
 	if (rendermode == render_opengl)
 	{
 		// ughhhhh please can someone else do this? thanks ~toast 25/7/19 in 38 degrees centigrade w/o AC
-		HWR_DrawFadeFill(x, y, w, h, c, color, strength); // toast two days later - left above comment in 'cause it's funny
+		HWR_DrawFadeFill(x + (V_StereoHUDOffset(c) / FRACUNIT), y, w, h, c, color, strength); // toast two days later - left above comment in 'cause it's funny
 		return;
 	}
 #endif
@@ -2068,7 +2091,7 @@ void V_DrawFlatFill(INT32 x, INT32 y, INT32 w, INT32 h, lumpnum_t flatnum)
 #ifdef HWRENDER
 	if (rendermode == render_opengl)
 	{
-		HWR_DrawFlatFill(x, y, w, h, flatnum);
+		HWR_DrawFlatFill(x + (V_StereoHUDOffset(0) / FRACUNIT), y, w, h, flatnum);
 		return;
 	}
 #endif
