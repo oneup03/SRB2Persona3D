@@ -119,7 +119,15 @@ fi
 # asset MD5 in config.h.in leaves d_main.o stale and the game dies at startup
 # with "File is old, is corrupt or has been modified" naming a hash you already
 # updated. Touch the one consumer so make rebuilds it.
-D_MAIN_OBJ=$(find make -name d_main.o 2>/dev/null | head -n1)
+#
+# `|| true` is load-bearing under `set -euo pipefail`, twice over. make/ holds
+# build output and has no tracked files, so a fresh checkout does not have it
+# at all: find exits 1, 2>/dev/null hides why, pipefail carries that through
+# head, the assignment inherits it and errexit kills the script having printed
+# nothing. (That is exactly how this broke CI while working on every machine
+# with a previous build lying around.) And even once make/ exists, head -n1
+# closing the pipe early can leave find on a SIGPIPE.
+D_MAIN_OBJ=$(find make -name d_main.o 2>/dev/null | head -n1 || true)
 if [ -n "$D_MAIN_OBJ" ] && [ src/config.h.in -nt "$D_MAIN_OBJ" ]; then
 	echo ">> config.h.in changed, forcing d_main.c rebuild"
 	touch src/d_main.c
