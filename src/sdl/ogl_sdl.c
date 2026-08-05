@@ -283,6 +283,14 @@ void OglSdlFinishUpdate(boolean waitvbl)
 		}
 	}
 
+	// Ask for the lenticular lens exactly while we're weaving through it, so a
+	// panel with a switchable lens goes back to being a sharp 2D monitor the
+	// moment the player leaves LeiaSR mode rather than at exit. Cached inside;
+	// this only reaches the SR runtime when the answer changes. Deliberately
+	// after the weave above, so the first weaving frame has already brought
+	// the weaver up and there is a context to ask with.
+	R_LeiaSR_SetLens(weave);
+
 	SDL_GL_SwapWindow(window);
 
 	GClipRect(0, 0, realwidth, realheight, NZCLIP_PLANE);

@@ -1,4 +1,9 @@
 [submodule "libs/SR-lib"]
 	path = libs/SR-lib
 	url = https://github.com/bo3b/SR-lib.git
-	branch = master
+	# api_expansion, not master: it is where SR-lib's CMake package lives
+	# (SRLib::SR + srlib_apply_delayload), which leiasr_shim/CMakeLists.txt is
+	# written against rather than hand-rolling the SDK paths and the delay-load
+	# list. It also carries the switchable-lens hint srk_lens is built on. A
+	# fast-forward of master, so nothing is lost by tracking it.
+	branch = api_expansion

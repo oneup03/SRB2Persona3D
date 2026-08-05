@@ -155,14 +155,18 @@ echo ">> built     : $OUT/srb2win64.exe"
 #     stereo mode degrades to plain Side-by-Side. CI builds it in a dedicated
 #     windows-latest job and passes it in as an artifact, so CI runs --no-shim.
 if [ "$DO_SHIM" = 1 ] && [ -f leiasr_shim/CMakeLists.txt ]; then
-	if [ ! -f libs/SR-lib/SR.cpp ] && command -v git >/dev/null 2>&1; then
+	# CMakeLists.txt rather than SR.cpp: leiasr_shim/CMakeLists.txt consumes
+	# SR-lib's CMake package (SRLib::SR + srlib_apply_delayload), which only
+	# exists on the api_expansion branch .gitmodules pins. A checkout without
+	# it has SR.cpp but cannot be configured against.
+	if [ ! -f libs/SR-lib/CMakeLists.txt ] && command -v git >/dev/null 2>&1; then
 		echo ">> initializing libs/SR-lib submodule"
 		if ! git submodule update --init libs/SR-lib 2>/dev/null; then
 			echo "   (skipped - submodule init failed; LeiaSR shim will not build)"
 		fi
 	fi
 
-	if command -v cmake >/dev/null 2>&1 && [ -f libs/SR-lib/SR.cpp ]; then
+	if command -v cmake >/dev/null 2>&1 && [ -f libs/SR-lib/CMakeLists.txt ]; then
 		echo ">> building LeiaSR shim DLL (MSVC)"
 		# Configure separately from build so "no MSVC toolchain at all" is
 		# distinguishable from "shim source broke". -A x64 implies the Visual

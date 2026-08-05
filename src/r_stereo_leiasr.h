@@ -19,37 +19,55 @@
 /// header is the engine-side, pure-C runtime loader for it.
 ///
 /// If the shim DLL is absent, fails to load, or the SR runtime/hardware is
-/// not present, R_LeiaSR_Available() returns false and the LeiaSR stereo mode
-/// degrades to plain Side-by-Side via R_StereoMode() in r_stereo.c. No part
-/// of the engine links against the SR SDK.
+/// not present, R_LeiaSR_Available() returns false and the present path in
+/// ogl_sdl.c simply leaves the Side-by-Side frame it already drew on screen.
+/// No part of the engine links against the SR SDK.
 
 #ifndef __R_STEREO_LEIASR__
 #define __R_STEREO_LEIASR__
 
 #include "doomdef.h"
 
-// Attempt to load leiasr_shim.dll and bring up the SR weaver against the
-// game's window. Idempotent: returns immediately if init was already
-// attempted (success or failure is cached). Safe to call before the GL
-// context exists - the actual weaver creation happens lazily inside the
-// shim's init function which I_GetWindowHandle() supplies the HWND to.
+// Load leiasr_shim.dll and resolve its exports. Idempotent, and cheap: it
+// touches no SR API at all, so it is safe to call at any point after startup.
+// Bringing the weaver itself up is deliberately NOT done here - see
+// R_LeiaSR_Weave.
 void R_LeiaSR_Init(void);
 
-// True iff the shim DLL was loaded AND its init reported success (SR
-// runtime alive, an SR display is connected, weaver created cleanly).
-// Drives the R_StereoMode() fall-back from STEREO_LEIASR to STEREO_SBS
-// when the runtime isn't there, and the present-path branch in ogl_sdl.c.
+// Whether the LeiaSR present path is worth taking this frame: the shim
+// resolved, and either the weaver is up or we have not tried yet.
+//
+// Deliberately not "is weaving". The SR runtime is not touched until the
+// first weave (some builds of the SR service re-parent and resize the host
+// window as their context comes up, which is worth keeping off the title
+// screen), and the present path uses this answer to decide whether to call
+// R_LeiaSR_Weave at all - so answering "no, not yet" would mean the bring-up
+// never happens. A bring-up that fails makes this false from the next frame
+// on, at a cost of one wasted screen capture.
 boolean R_LeiaSR_Available(void);
 
 // Hand a side-by-side texture to the SR weaver and have it composite the
 // autostereo output into the currently-bound framebuffer at the current
-// viewport. No-op when R_LeiaSR_Available() is false. The caller is
-// responsible for binding the back buffer / setting the viewport to the
-// full SDL window beforehand - the weaver writes to wherever GL is bound.
+// viewport. Brings the weaver up on the first call; a no-op once that has
+// been tried and failed. The caller is responsible for binding the back
+// buffer / setting the viewport to the full SDL window beforehand - the
+// weaver writes to wherever GL is bound.
 void R_LeiaSR_Weave(unsigned int tex_id, int width, int height);
 
-// Tear the weaver and SR context down. Called from I_Quit so the SR
-// connection isn't left dangling for the next launch.
+// Ask for the switchable lens, on the panels that have one: lens down and the
+// display is autostereoscopic, lens up and it is an ordinary sharp 2D
+// monitor. Call every frame with "are we weaving" - the request is cached and
+// only reaches the runtime when the answer changes.
+//
+// A preference rather than a command; the SR service arbitrates it across
+// every application with an opinion. Silently does nothing before the weaver
+// exists, on a panel with a fixed lens, or against a shim predating the
+// export.
+void R_LeiaSR_SetLens(boolean on);
+
+// Drop the lens, then tear the weaver and SR context down. Called from I_Quit
+// so the SR connection isn't left dangling for the next launch - and so the
+// desktop is sharp again the moment the player quits.
 void R_LeiaSR_Shutdown(void);
 
 #endif // __R_STEREO_LEIASR__
