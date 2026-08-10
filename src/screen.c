@@ -77,7 +77,23 @@ CV_PossibleValue_t cv_renderer_t[] = {
 	{0, NULL}
 };
 
-consvar_t cv_renderer = CVAR_INIT ("renderer", "Software", CV_SAVE|CV_NOLUA|CV_CALL, cv_renderer_t, SCR_ChangeRenderer);
+// Default to OpenGL where it exists. Stereoscopic 3D is OpenGL-only -- the
+// software renderer has no per-eye plumbing -- so shipping a software default
+// means a fresh install starts in the one mode where none of the stereo modes
+// do anything, and cv_stereomode just warns and waits.
+//
+// Safe when OpenGL isn't usable: SCR_CheckDefaultMode only applies this if no
+// -software/-opengl/-nogl argument was given, and SCR_ChangeRenderer refuses
+// the switch (with an alert) when vid.glstate is VID_GL_LIBRARY_ERROR, leaving
+// the process in software. A saved config still wins -- this is only the value
+// a config that has never been written gets.
+#ifdef HWRENDER
+#define DEFAULT_RENDERER "OpenGL"
+#else
+#define DEFAULT_RENDERER "Software"
+#endif
+
+consvar_t cv_renderer = CVAR_INIT ("renderer", DEFAULT_RENDERER, CV_SAVE|CV_NOLUA|CV_CALL, cv_renderer_t, SCR_ChangeRenderer);
 
 static void SCR_ChangeFullscreen(void);
 
