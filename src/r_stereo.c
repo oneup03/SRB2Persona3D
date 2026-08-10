@@ -74,7 +74,6 @@ static CV_PossibleValue_t stereomode_cons_t[] = {
 static CV_PossibleValue_t stereoipd_cons_t[]      = {{10,  "MIN"}, {400,  "MAX"}, {0, NULL}};   // 1.0–10.0 wu (default 6.0 wu sits at ~56%)
 static CV_PossibleValue_t stereofoclen_cons_t[]   = {{50,  "MIN"}, {250,  "MAX"}, {0, NULL}};   // 50–150 wu (default 100 wu centered)
 static CV_PossibleValue_t stereohuddepth_cons_t[]       = {{-100, "MIN"}, { 50, "MAX"}, {0, NULL}};   // -1.00 (infinity) .. +0.50 (half the convergence distance, pops out)
-static CV_PossibleValue_t stereocrosshairdepth_cons_t[] = {{-150, "MIN"}, {  0, "MAX"}, {0, NULL}};   // -1.50 .. 0.00 — crosshair sits at or behind the screen plane
 
 static void Stereo_OnChange(void);
 
@@ -83,14 +82,9 @@ consvar_t cv_stereoipd              = CVAR_INIT("stereoipd",              "60", 
 consvar_t cv_stereofoclen           = CVAR_INIT("stereofoclen",           "100", CV_SAVE,         stereofoclen_cons_t,  NULL);   // ×1.0 → 100.0 wu convergence (typical scene viewing distance)
 consvar_t cv_stereoswap             = CVAR_INIT("stereoswap",             "Off",  CV_SAVE,         CV_OnOff,             NULL);
 consvar_t cv_stereohuddepth         = CVAR_INIT("stereohuddepth",         "-30",  CV_SAVE,         stereohuddepth_cons_t,       NULL);   // -0.30 fraction — HUD sits a little way behind the screen plane (~1.4× focal)
-// -0.50 fraction — roughly 2x the convergence distance, a plausible aim depth.
-// This was -100 while the sign convention was documented backwards; that is
-// -1.00, i.e. optical infinity, which gives the crosshair the full inter-ocular
-// separation and makes it fight badly with any nearby geometry it overlays.
-consvar_t cv_stereocrosshairdepth   = CVAR_INIT("stereocrosshairdepth",   "-50", CV_SAVE,         stereocrosshairdepth_cons_t, NULL);
 
 // current_eye holds the *perspective* eye for the active pass — it tracks
-// which eye's view is being rendered (and is what HUD/crosshair shifts and
+// which eye's view is being rendered (and is what the HUD shift and
 // the off-axis frustum should follow). When "Swap Eyes" is on, this is the
 // opposite of the placement eye that SetStereoMode used to pick the
 // viewport / color mask / stencil region.
@@ -104,8 +98,6 @@ static SINT8    current_eye           = STEREO_EYE_MONO;
 static SINT8    current_placement_eye = STEREO_EYE_MONO;
 static float   current_iod           = 0.0f;
 static float   current_focal         = 1.0f;
-static fixed_t cached_crosshair_dist = 0; // populated by R_UpdateStereoCrosshairTrace
-static boolean drawing_crosshair_hud = false;
 static boolean backbuffer_is_stereo  = false;
 static boolean stereo_render_in_progress = false;
 
@@ -132,7 +124,6 @@ void R_RegisterStereoVars(void)
 	CV_RegisterVar(&cv_stereofoclen);
 	CV_RegisterVar(&cv_stereoswap);
 	CV_RegisterVar(&cv_stereohuddepth);
-	CV_RegisterVar(&cv_stereocrosshairdepth);
 }
 
 boolean R_StereoActive(void)
@@ -281,10 +272,7 @@ static float Stereo_PixelShiftPerEye(float iod_world, float focal_world)
 	return iod_world * ((float)vid.width * 0.25f) / (focal_world * tan_half);
 }
 
-// Compute the flat chrome-HUD shift (depth-fraction-based). Doesn't consult
-// drawing_crosshair_hud, so it's safe to call as a recursion-free fallback
-// from R_GetStereoCrosshairShift.
-static INT32 R_GetStereoChromeHUDShift_Raw(void)
+INT32 R_GetStereoHUDShift(void)
 {
 	if (!R_StereoActive() || current_eye == STEREO_EYE_MONO)
 		return 0;
@@ -296,37 +284,7 @@ static INT32 R_GetStereoChromeHUDShift_Raw(void)
 	return (INT32)(-current_eye * depth_frac * Stereo_PixelShiftPerEye(ipd, current_focal));
 }
 
-INT32 R_GetStereoHUDShift(void)
-{
-	if (!R_StereoActive() || current_eye == STEREO_EYE_MONO)
-		return 0;
-
-	// When the crosshair is being drawn, route to the dynamic-depth shift
-	// so the crosshair sits at the world-hit depth instead of the flat
-	// chrome-HUD depth.
-	if (drawing_crosshair_hud)
-		return R_GetStereoCrosshairShift();
-
-	return R_GetStereoChromeHUDShift_Raw();
-}
-
-INT32 R_GetStereoCrosshairShift(void)
-{
-	if (!R_StereoActive() || current_eye == STEREO_EYE_MONO)
-		return 0;
-	if (cv_stereocrosshairdepth.value == 0 || cv_stereoipd.value == 0)
-		return 0;
-
-	// Mirrors the chrome-HUD-shift formula but driven by the separate
-	// crosshair-depth CVAR so users can place the crosshair at a different
-	// 3D plane than the chrome HUD (e.g. crosshair at typical aim depth,
-	// chrome at screen plane).
-	const float depth_frac = cv_stereocrosshairdepth.value / 100.0f;
-	const float ipd        = cv_stereoipd.value * 0.1f;
-	return (INT32)(-current_eye * depth_frac * Stereo_PixelShiftPerEye(ipd, current_focal));
-}
-
-// Depth fraction (the same -1..+1 quantity the HUD/crosshair CVARs store) that
+// Depth fraction (the same -1..+1 quantity the HUD depth CVAR stores) that
 // puts an element at world distance `z` along the view axis.
 //
 // Derivation. For a point at view-space depth z the off-axis rig in
@@ -404,15 +362,6 @@ fixed_t R_GetStereoWorldHUDOffset(fixed_t viewdist)
 	return R_StereoBaseOffsetFromPixels(px);
 }
 
-void R_UpdateStereoCrosshairTrace(player_t *player)
-{
-	(void)player;
-	// No-op: the dynamic raycast was replaced by the static
-	// cv_stereocrosshairdepth CVAR. Kept as a stub so the call site in
-	// d_main.c doesn't need conditional compilation.
-	cached_crosshair_dist = 0;
-}
-
 // D_Display brackets its whole eye loop with this so NetUpdate can stand down
 // for the duration. See R_StereoRenderInProgress in r_stereo.h for why.
 void R_SetStereoRenderInProgress(boolean in_progress)
@@ -433,16 +382,6 @@ boolean R_BackbufferIsStereo(void)
 void R_SetBackbufferIsStereo(boolean is_stereo)
 {
 	backbuffer_is_stereo = is_stereo;
-}
-
-void R_BeginCrosshairHUDDraw(void)
-{
-	drawing_crosshair_hud = true;
-}
-
-void R_EndCrosshairHUDDraw(void)
-{
-	drawing_crosshair_hud = false;
 }
 
 void R_StereoComputePlayerEyeRect(stereomode_t mode, SINT8 eye, int player_idx,

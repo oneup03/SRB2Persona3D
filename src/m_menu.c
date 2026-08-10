@@ -1452,7 +1452,6 @@ static menuitem_t OP_Stereoscopic3DMenu[] =
 
 	{IT_HEADER, NULL, "HUD Depth", NULL, 56},
 	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "HUD Depth",         &cv_stereohuddepth,       68},
-	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Crosshair Depth",   &cv_stereocrosshairdepth, 78},
 };
 
 static menuitem_t OP_OpenGLOptionsMenu[] =

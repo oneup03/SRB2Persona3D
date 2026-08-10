@@ -39,7 +39,6 @@ extern consvar_t cv_stereoipd;
 extern consvar_t cv_stereofoclen;
 extern consvar_t cv_stereoswap;
 extern consvar_t cv_stereohuddepth;
-extern consvar_t cv_stereocrosshairdepth;
 
 // Register all stereo CVARs with the console. Call from R_RegisterEngineStuff.
 void R_RegisterStereoVars(void);
@@ -60,13 +59,13 @@ int R_StereoNumEyes(void);
 SINT8 R_StereoEyeForPass(int pass);
 
 // Per-pass setup/teardown. Begin updates the global eye state used by
-// HWR_SetupView and crosshair parallax; End restores GL state.
+// HWR_SetupView and the HUD parallax; End restores GL state.
 void R_BeginStereoEye(SINT8 eye);
 void R_EndStereoEye(void);
 
 // Accessors used by HWR_SetupView to populate FTransform.
 SINT8  R_GetCurrentEye(void);                  // -1, 0, +1 — perspective eye
-                                              // (HUD/crosshair shifts and the off-axis
+                                              // (the HUD shift and the off-axis
                                               // frustum follow this; honors "Swap Eyes")
 float R_GetStereoIOD(void);                   // signed eye separation for current eye
 float R_GetStereoFocal(void);                 // convergence-plane distance
@@ -81,9 +80,9 @@ SINT8  R_GetCurrentPlacementEye(void);
 // HUD parallax helpers. Returns the X-pixel offset to apply to chrome HUD
 // elements during the current eye pass. Mono returns 0.
 //
-// Depth-fraction sign convention, shared by cv_stereohuddepth,
-// cv_stereocrosshairdepth and R_GetStereoWorldHUDOffset: 0 is the screen
-// plane, NEGATIVE is further into the screen (-1.0 == optical infinity),
+// Depth-fraction sign convention, shared by cv_stereohuddepth and
+// R_GetStereoWorldHUDOffset: 0 is the screen plane, NEGATIVE is further
+// into the screen (-1.0 == optical infinity),
 // POSITIVE is out toward the viewer. Lower is deeper.
 INT32 R_GetStereoHUDShift(void);
 
@@ -103,14 +102,6 @@ fixed_t R_StereoBaseOffsetFromPixels(INT32 px);
 // The value is net of the flat chrome-HUD shift that V_Draw* applies on its
 // own, so callers add it on top rather than replacing anything.
 fixed_t R_GetStereoWorldHUDOffset(fixed_t viewdist);
-
-// Crosshair parallax. Per-frame raycast result is cached; this returns the
-// X-pixel offset to apply to the crosshair during the current eye pass.
-INT32 R_GetStereoCrosshairShift(void);
-
-// (Kept as a no-op stub — the dynamic crosshair raycast was replaced by a
-// separate user-adjustable cv_stereocrosshairdepth CVAR.)
-void R_UpdateStereoCrosshairTrace(player_t *player);
 
 // True while D_Display is inside its per-eye loop.
 //
@@ -136,12 +127,6 @@ void R_SetStereoRenderInProgress(boolean in_progress);
 // a "stereo presentation" pass to mono content.
 extern boolean R_BackbufferIsStereo(void);
 void R_SetBackbufferIsStereo(boolean is_stereo);
-
-// Bracket the crosshair draw so the HUD-shift helper switches over to the
-// dynamic-depth (ray-traced) parallax instead of the flat chrome-HUD depth.
-// Idempotent and cheap when stereo is off.
-void R_BeginCrosshairHUDDraw(void);
-void R_EndCrosshairHUDDraw(void);
 
 // Compute the GL viewport rect (bottom-up Y) for the given (mode, eye,
 // player) combination, accounting for splitscreen. Layout choices:
