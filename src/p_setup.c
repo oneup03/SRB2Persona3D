@@ -4189,6 +4189,20 @@ static void P_InitGametype(void)
 			: mapheaderinfo[gamemap - 1]->numlaps);
 }
 
+// The "SPEEDING OFF TO [ZONE] [ACT]" line P_LoadLevel prints over the faded
+// screen, factored out so it can be drawn per-eye in stereo.
+static void P_DrawSpeedingOffText(void)
+{
+	char tx[64];
+
+	V_DrawSmallString(1, 191, V_ALLOWLOWERCASE|V_TRANSLUCENT|V_SNAPTOLEFT|V_SNAPTOBOTTOM, M_GetText("Speeding off to..."));
+	snprintf(tx, 63, "%s%s%s",
+		mapheaderinfo[gamemap-1]->lvlttl,
+		(mapheaderinfo[gamemap-1]->levelflags & LF_NOZONE) ? "" : " Zone",
+		(mapheaderinfo[gamemap-1]->actnum > 0) ? va(" %d",mapheaderinfo[gamemap-1]->actnum) : "");
+	V_DrawSmallString(1, 195, V_ALLOWLOWERCASE|V_TRANSLUCENT|V_SNAPTOLEFT|V_SNAPTOBOTTOM, tx);
+}
+
 /** Loads a level from a lump or external wad.
   *
   * \param fromnetsave If true, skip some stuff because we're loading a netgame snapshot.
@@ -4318,13 +4332,8 @@ boolean P_LoadLevel(boolean fromnetsave, boolean reloadinggamestate)
 		if (rendermode != render_none)
 		{
 			// Don't include these in the fade!
-			char tx[64];
-			V_DrawSmallString(1, 191, V_ALLOWLOWERCASE|V_TRANSLUCENT|V_SNAPTOLEFT|V_SNAPTOBOTTOM, M_GetText("Speeding off to..."));
-			snprintf(tx, 63, "%s%s%s",
-				mapheaderinfo[gamemap-1]->lvlttl,
-				(mapheaderinfo[gamemap-1]->levelflags & LF_NOZONE) ? "" : " Zone",
-				(mapheaderinfo[gamemap-1]->actnum > 0) ? va(" %d",mapheaderinfo[gamemap-1]->actnum) : "");
-			V_DrawSmallString(1, 195, V_ALLOWLOWERCASE|V_TRANSLUCENT|V_SNAPTOLEFT|V_SNAPTOBOTTOM, tx);
+			// Drawn per-eye: this presents outside the D_Display eye loop.
+			R_DrawAcrossStereoEyes(P_DrawSpeedingOffText);
 			I_UpdateNoVsync();
 		}
 

@@ -27,6 +27,7 @@
 #include "i_system.h"
 #include "i_threads.h"
 #include "m_menu.h"
+#include "r_stereo.h" // R_DrawAcrossStereoEyes for the end-of-intro hold
 #include "dehacked.h"
 #include "g_input.h"
 #include "console.h"
@@ -905,7 +906,10 @@ void F_IntroDrawer(void)
 #ifdef HAVE_THREADS
 					I_lock_mutex(&m_menu_mutex);
 #endif
-					M_Drawer(); // menu is drawn even on top of wipes
+					// Stereoscopic 3D: this hold loop draws and presents
+					// outside the D_Display eye loop, so the overlay needs
+					// its own per-eye pass.
+					R_DrawAcrossStereoEyes(M_Drawer); // menu is drawn even on top of wipes
 #ifdef HAVE_THREADS
 					I_unlock_mutex(m_menu_mutex);
 #endif
