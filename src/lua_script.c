@@ -322,6 +322,23 @@ int LUA_PushGlobals(lua_State *L, const char *word)
 		// it happens twice per frame. Pure drawing needs no guard.
 		lua_pushinteger(L, R_StereoActive() ? (R_GetCurrentPlacementEye() > 0 ? 1 : 0) : 0);
 		return 1;
+	} else if (fastcmp(word,"stereofinalpass")) {
+		// 1 on the last eye pass of the frame, and always 1 in mono.
+		//
+		// Which of this and stereoeyepass a hook should guard on depends on
+		// whether it mutates BEFORE or AFTER it draws:
+		//
+		//   mutate-then-draw -> guard on `stereoeyepass == 0`. Pass 0 advances
+		//     and draws the new state; pass 1 draws that same state. Both eyes
+		//     agree.
+		//   draw-then-mutate -> guard on `stereofinalpass == 1`. Advancing on
+		//     pass 0 would make pass 0 draw the old state and pass 1 the new
+		//     one, so the eyes would sit one frame apart EVERY frame -- not
+		//     merely double-speed, but a genuine per-eye disparity (including
+		//     vertical, which is uncomfortable to look at). Advancing after the
+		//     last pass keeps both eyes identical and still steps once.
+		lua_pushinteger(L, (!R_StereoActive() || R_GetCurrentPlacementEye() > 0) ? 1 : 0);
+		return 1;
 	} else if (fastcmp(word,"sstimer")) {
 		lua_pushinteger(L, sstimer);
 		return 1;

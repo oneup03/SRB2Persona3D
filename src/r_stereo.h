@@ -112,6 +112,23 @@ INT32 R_GetStereoCrosshairShift(void);
 // separate user-adjustable cv_stereocrosshairdepth CVAR.)
 void R_UpdateStereoCrosshairTrace(player_t *player);
 
+// True while D_Display is inside its per-eye loop.
+//
+// NetUpdate honours this and returns immediately. It is called several times
+// from deep inside HWR_RenderPlayerView to keep the network alive during a slow
+// frame, and the eye loop runs that whole path once per eye -- so without this
+// it fires about twice as often, and worse, it can run BETWEEN the two eye
+// passes. NetUpdate isn't passive: Local_Maketic builds a ticcmd (advancing
+// local aiming) and GetPackets applies inbound state. Either one landing
+// mid-loop makes the two eyes render subtly different game states, which shows
+// up as jitter or a camera that disagrees between eyes.
+//
+// Nothing is lost by deferring: NetUpdate derives realtics from wall-clock
+// against a static gametime it only advances when it actually runs, so the
+// skipped time is picked up by the next call rather than dropped.
+boolean R_StereoRenderInProgress(void);
+void R_SetStereoRenderInProgress(boolean in_progress);
+
 // True when the current backbuffer contents were rendered through the stereo
 // eye loop (i.e. already SbS / per-eye). False after a non-D_Display draw
 // (loading screen, console flush during init, etc.). Set by D_Display at the

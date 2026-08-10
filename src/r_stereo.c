@@ -83,7 +83,11 @@ consvar_t cv_stereoipd              = CVAR_INIT("stereoipd",              "60", 
 consvar_t cv_stereofoclen           = CVAR_INIT("stereofoclen",           "100", CV_SAVE,         stereofoclen_cons_t,  NULL);   // ×1.0 → 100.0 wu convergence (typical scene viewing distance)
 consvar_t cv_stereoswap             = CVAR_INIT("stereoswap",             "Off",  CV_SAVE,         CV_OnOff,             NULL);
 consvar_t cv_stereohuddepth         = CVAR_INIT("stereohuddepth",         "-30",  CV_SAVE,         stereohuddepth_cons_t,       NULL);   // -0.30 fraction — HUD sits a little way behind the screen plane (~1.4× focal)
-consvar_t cv_stereocrosshairdepth   = CVAR_INIT("stereocrosshairdepth",   "-100", CV_SAVE,         stereocrosshairdepth_cons_t, NULL);   // -1.00 fraction — crosshair sits at optical infinity
+// -0.50 fraction — roughly 2x the convergence distance, a plausible aim depth.
+// This was -100 while the sign convention was documented backwards; that is
+// -1.00, i.e. optical infinity, which gives the crosshair the full inter-ocular
+// separation and makes it fight badly with any nearby geometry it overlays.
+consvar_t cv_stereocrosshairdepth   = CVAR_INIT("stereocrosshairdepth",   "-50", CV_SAVE,         stereocrosshairdepth_cons_t, NULL);
 
 // current_eye holds the *perspective* eye for the active pass — it tracks
 // which eye's view is being rendered (and is what HUD/crosshair shifts and
@@ -103,6 +107,7 @@ static float   current_focal         = 1.0f;
 static fixed_t cached_crosshair_dist = 0; // populated by R_UpdateStereoCrosshairTrace
 static boolean drawing_crosshair_hud = false;
 static boolean backbuffer_is_stereo  = false;
+static boolean stereo_render_in_progress = false;
 
 static void Stereo_OnChange(void)
 {
@@ -406,6 +411,18 @@ void R_UpdateStereoCrosshairTrace(player_t *player)
 	// cv_stereocrosshairdepth CVAR. Kept as a stub so the call site in
 	// d_main.c doesn't need conditional compilation.
 	cached_crosshair_dist = 0;
+}
+
+// D_Display brackets its whole eye loop with this so NetUpdate can stand down
+// for the duration. See R_StereoRenderInProgress in r_stereo.h for why.
+void R_SetStereoRenderInProgress(boolean in_progress)
+{
+	stereo_render_in_progress = in_progress;
+}
+
+boolean R_StereoRenderInProgress(void)
+{
+	return stereo_render_in_progress;
 }
 
 boolean R_BackbufferIsStereo(void)

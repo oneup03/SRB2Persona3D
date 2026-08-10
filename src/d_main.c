@@ -423,6 +423,11 @@ static void D_Display(void)
 	if (stereo_active)
 		HWR_ClearFrameBuffer();
 
+	// Hold NetUpdate off for the whole loop -- it must not run between the two
+	// eye passes, or they render different game states. See r_stereo.h.
+	if (stereo_active)
+		R_SetStereoRenderInProgress(true);
+
 	for (eye_pass = 0; eye_pass < stereo_num_eyes; eye_pass++)
 	{
 	if (stereo_active)
@@ -668,6 +673,10 @@ static void D_Display(void)
 	if (stereo_active)
 		R_EndStereoEye();
 	} // end stereo eye loop
+
+	// Unconditional: cheap, and it guarantees the flag can't stay latched and
+	// silently strangle the network if the loop ever gains an early exit.
+	R_SetStereoRenderInProgress(false);
 
 	if (stereo_active)
 	{

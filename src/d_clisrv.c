@@ -5397,6 +5397,14 @@ void NetUpdate(void)
 	INT32 i;
 	INT32 realtics;
 
+	// Stand down while D_Display is mid-eye-loop. HWR_RenderPlayerView calls us
+	// from deep inside the render, and the eye loop runs that path once per eye
+	// -- building a ticcmd or applying a packet between the two passes would
+	// have them render different game states. Deferred, not dropped: gametime
+	// only advances when we actually run, so the next call sees the time.
+	if (R_StereoRenderInProgress())
+		return;
+
 	nowtime = I_GetTime();
 	realtics = nowtime - gametime;
 
