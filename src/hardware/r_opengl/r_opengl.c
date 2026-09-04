@@ -605,6 +605,10 @@ typedef enum
 	// misc. (custom shaders)
 	gluniform_leveltime,
 
+	// stereoscopic 3D ghost/crosstalk reduction (composite shaders only)
+	gluniform_ghost_contrast,
+	gluniform_ghost_lift,
+
 	gluniform_max,
 } gluniform_t;
 
@@ -631,6 +635,14 @@ static gl_shaderstate_t gl_shaderstate;
 
 // Shader info
 static INT32 shader_leveltime = 0;
+
+// Ghost/crosstalk reduction, pushed down from the present path via
+// SetStereoGhostReduction. Initialised to the exact no-op values so a
+// composite that runs before anything sets them is a passthrough rather than
+// a crushed frame -- GLSL zero-initialises uniforms, and a contrast of 0
+// would flatten the image to mid-grey.
+static GLfloat shader_ghost_contrast = 1.0f;
+static GLfloat shader_ghost_lift = 0.0f;
 
 // Lactozilla: Shader functions
 static boolean Shader_CompileProgram(gl_shader_t *shader, GLint i, const GLchar *vert_shader, const GLchar *frag_shader);
@@ -852,11 +864,64 @@ static struct {
 // modulo is written as n - (n / 2) * 2 because % and mod() on ints vary across
 // GLSL versions.
 
+// Ghost/crosstalk reduction. Every stereo display leaks some of each eye's
+// image into the other, and how visible that leak is depends on the
+// BRIGHTNESS DIFFERENCE between the eyes -- so compressing the signal range
+// before it reaches the panel reduces what you see. Two levers, both global,
+// both applied at the very end of the pipeline so what gets compressed is what
+// actually reaches the display:
+//
+//   ghost_contrast  squeezes toward mid-grey, shrinking |L - R| directly and
+//                   leaving (1 - contrast)/2 of headroom at EACH end of the
+//                   range. Costs contrast across the whole image. Start at
+//                   0.90 and go lower only if edges still ghost.
+//   ghost_lift      raises the black floor and leaves white alone. Displays
+//                   that CANCEL crosstalk -- the LeiaSR weaver does -- already
+//                   pre-subtract a fraction of the opposite eye, and that
+//                   inversion drives dark pixels below zero, where the render
+//                   target clamps them; the clamped part is exactly what
+//                   survives as a visible ghost. Lift buys that foot-room
+//                   back. 0.02-0.05 is the useful band; blacks go grey fast
+//                   above it. It does nothing on a display that doesn't
+//                   cancel, where contrast is the only lever that helps.
+//
+// Which one wins is panel- and content-dependent, so both are exposed and
+// neither is chosen for the player.
+//
+// The remap has to run in the space the display's cancellation runs in.
+// Cancelling displays work in linear light, so the pivot is 0.5 in linear via
+// a plain pow(2.2) rather than the piecewise sRGB curve -- consistent with the
+// weaver, and cheap. Getting the space backwards washes the image out without
+// reducing the ghost.
+//
+// Deliberately NOT adaptive. Localising it cannot work: ghosting IS inter-eye
+// difference, so a correction applied unevenly adds inter-eye difference and
+// leaks in turn (a lifted patch only stops the ghost once it has grown to
+// cover the frame; dimming the bright eye where its fellow is dark carves a
+// dark rim that ghosts against bright backgrounds instead). Driving it from
+// frame content is structurally sound -- one global scalar applies identically
+// to both eyes -- but it visibly pumps the whole image as the scene changes,
+// and a fixed slider is less distracting than a correct but moving one.
+//
+// At the defaults (contrast 1.0, lift 0.0) the early-out makes this exactly
+// bit-identical to no pass at all, so the untouched path costs one compare.
+#define GLSL_GHOST_REDUCE_HELPER \
+	"uniform float ghost_contrast;\n" \
+	"uniform float ghost_lift;\n" \
+	"vec3 GhostReduce(vec3 c) {\n" \
+		"if (ghost_contrast >= 1.0 && ghost_lift <= 0.0) return c;\n" \
+		"vec3 lin = pow(clamp(c, 0.0, 1.0), vec3(2.2));\n" \
+		"lin = (lin - 0.5) * ghost_contrast + 0.5;\n" \
+		"lin = lin * (1.0 - ghost_lift) + ghost_lift;\n" \
+		"return pow(clamp(lin, 0.0, 1.0), vec3(1.0/2.2));\n" \
+	"}\n"
+
 // SbS source, Dubois optimised red/cyan matrix. Each output channel pulls in
 // BOTH eyes -- the small negative cross-eye terms are what suppress the bleed
 // that makes naive anaglyphs look smeary and colour-warped.
 #define GLSL_ANAGLYPH_DUBOIS_COMPOSITE_FRAGMENT_SHADER \
 	"uniform sampler2D tex;\n" \
+	GLSL_GHOST_REDUCE_HELPER \
 	"void main(void) {\n" \
 		"vec2 uv = gl_TexCoord[0].st;\n" \
 		"vec2 uvL = vec2(uv.x * 0.5, uv.y);\n" \
@@ -866,12 +931,13 @@ static struct {
 		"float r = clamp( 0.437*cA.r + 0.449*cA.g + 0.164*cA.b - 0.011*cB.r - 0.032*cB.g - 0.007*cB.b, 0.0, 1.0);\n" \
 		"float g = clamp(-0.062*cA.r - 0.062*cA.g - 0.024*cA.b + 0.377*cB.r + 0.761*cB.g + 0.009*cB.b, 0.0, 1.0);\n" \
 		"float b = clamp(-0.048*cA.r - 0.050*cA.g - 0.017*cA.b - 0.026*cB.r - 0.093*cB.g + 1.234*cB.b, 0.0, 1.0);\n" \
-		"gl_FragColor = vec4(r, g, b, 1.0);\n" \
+		"gl_FragColor = vec4(GhostReduce(vec3(r, g, b)), 1.0);\n" \
 	"}\0"
 
 // TaB source, row parity.
 #define GLSL_ROW_INTERLACED_COMPOSITE_FRAGMENT_SHADER \
 	"uniform sampler2D tex;\n" \
+	GLSL_GHOST_REDUCE_HELPER \
 	"void main(void) {\n" \
 		"vec2 uv = gl_TexCoord[0].st;\n" \
 		"int row = int(gl_FragCoord.y);\n" \
@@ -879,12 +945,14 @@ static struct {
 			"uv.y = uv.y * 0.5 + 0.5;\n" \
 		"else\n" \
 			"uv.y = uv.y * 0.5;\n" \
-		"gl_FragColor = texture2D(tex, uv);\n" \
+		"vec4 c = texture2D(tex, uv);\n" \
+		"gl_FragColor = vec4(GhostReduce(c.rgb), c.a);\n" \
 	"}\0"
 
 // SbS source, column parity.
 #define GLSL_COLUMN_INTERLACED_COMPOSITE_FRAGMENT_SHADER \
 	"uniform sampler2D tex;\n" \
+	GLSL_GHOST_REDUCE_HELPER \
 	"void main(void) {\n" \
 		"vec2 uv = gl_TexCoord[0].st;\n" \
 		"int col = int(gl_FragCoord.x);\n" \
@@ -892,12 +960,14 @@ static struct {
 			"uv.x = uv.x * 0.5;\n" \
 		"else\n" \
 			"uv.x = uv.x * 0.5 + 0.5;\n" \
-		"gl_FragColor = texture2D(tex, uv);\n" \
+		"vec4 c = texture2D(tex, uv);\n" \
+		"gl_FragColor = vec4(GhostReduce(c.rgb), c.a);\n" \
 	"}\0"
 
 // SbS source, (col + row) parity.
 #define GLSL_CHECKERBOARD_COMPOSITE_FRAGMENT_SHADER \
 	"uniform sampler2D tex;\n" \
+	GLSL_GHOST_REDUCE_HELPER \
 	"void main(void) {\n" \
 		"vec2 uv = gl_TexCoord[0].st;\n" \
 		"int col = int(gl_FragCoord.x);\n" \
@@ -907,7 +977,22 @@ static struct {
 			"uv.x = uv.x * 0.5;\n" \
 		"else\n" \
 			"uv.x = uv.x * 0.5 + 0.5;\n" \
-		"gl_FragColor = texture2D(tex, uv);\n" \
+		"vec4 c = texture2D(tex, uv);\n" \
+		"gl_FragColor = vec4(GhostReduce(c.rgb), c.a);\n" \
+	"}\0"
+
+// Straight passthrough whose only job is the ghost reduction above. SbS, TaB
+// and LeiaSR leave the frame in its final layout with no per-pixel eye
+// selection left to do, so they have no composite of their own to fold the
+// remap into -- this is that composite. The present path only runs it when the
+// sliders are off their defaults, and for LeiaSR it runs BEFORE the weave, so
+// what the weaver's own crosstalk cancellation acts on is already compressed.
+#define GLSL_STEREO_GHOST_COMPOSITE_FRAGMENT_SHADER \
+	"uniform sampler2D tex;\n" \
+	GLSL_GHOST_REDUCE_HELPER \
+	"void main(void) {\n" \
+		"vec4 c = texture2D(tex, gl_TexCoord[0].st);\n" \
+		"gl_FragColor = vec4(GhostReduce(c.rgb), c.a);\n" \
 	"}\0"
 
 } const gl_shadersources[] = {
@@ -943,6 +1028,7 @@ static struct {
 	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_COLUMN_INTERLACED_COMPOSITE_FRAGMENT_SHADER},
 	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_CHECKERBOARD_COMPOSITE_FRAGMENT_SHADER},
 	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_ANAGLYPH_DUBOIS_COMPOSITE_FRAGMENT_SHADER},
+	{GLSL_DEFAULT_VERTEX_SHADER, GLSL_STEREO_GHOST_COMPOSITE_FRAGMENT_SHADER},
 
 	{NULL, NULL},
 };
@@ -1232,57 +1318,73 @@ static void GLPerspective(GLfloat fovy, GLfloat aspect)
 	pglMultMatrixf(&m[0][0]);
 }
 
-// Off-axis stereo perspective -- direct port of the OpenVR-style reference:
-//   horFov    = tan(fov/2)              (input fov is HORIZONTAL, in degrees)
-//   verFov    = horFov / aspect         (vertical derived from aspect ratio)
-//   eyeOffset = +-(sep/2) / conv        (per-eye lateral frustum shift, tan-space)
-//   bounds (tan-space, then * zNear for the glFrustum form):
-//     left   = -horFov + eyeOffset
-//     right  =  horFov + eyeOffset
-//     bottom = -verFov
-//     top    =  verFov
-// The eye translate (post-frustum -iod/2 in X) is what gives stereo its
-// depth-dependent parallax -- without it, all objects share the same constant
-// disparity (shear stereo). Skybox passes set skip_eye_translate=true so the
-// sky receives only the constant frustum shift = max-IPD parallax = "infinity".
-//   iod < 0 : left eye
-//   iod > 0 : right eye
-static void GLPerspectiveStereo(GLfloat fovy, GLfloat aspect, GLfloat iod, GLfloat focal, boolean skip_eye_translate)
+// Off-axis stereo perspective, CLIP-SPACE parameterization.
+//
+// The projection is the ordinary symmetric perspective one, with a single
+// horizontal shear term dropped into the [2][0] slot -- and under this
+// parameterization that term is not derived from the stereo setting, it IS
+// the setting:
+//
+//   m[2][0] = separation          (already signed for this eye)
+//
+// No convergence appears in the matrix at all. That is the defining property:
+// the shear is invariant under convergence, and everything convergence does
+// lives in the matching view-space eye translation instead, which is derived
+// per frame rather than stored:
+//
+//   half_baseline = separation * tan(fov/2) * convergence
+//
+// Two things follow that are worth knowing before touching this:
+//  * The physical eye baseline is no longer constant -- it moves with BOTH
+//    the FoV and the convergence, which is what holds zero parallax at the
+//    convergence plane while separation stays fixed.
+//  * Nothing else in the projection changes. FoV, aspect and the near/far
+//    planes flow through untouched, so this composes with SRB2's own FoV
+//    (and with the splitscreen FoV fudge below it) instead of fighting it.
+//
+// Disparity at infinity is `separation` outright, expressed as a fraction of
+// the screen width, so a zoom no longer inflates or deflates the 3D effect
+// and there is nothing left to compensate. The previous world-unit-IPD form
+// needed a tan(fov/2) term here that the projection's own 1/tan(fov/2) then
+// divided straight back out.
+//
+// Skybox passes set skip_eye_translate=true, leaving only the shear -- which
+// is precisely the depth -> infinity limit, i.e. max parallax.
+//   separation < 0 : one eye, > 0 : the other. See Stereo_EyeDir in
+//   r_stereo.c for which, and for why the same sign also drives the HUD.
+static void GLPerspectiveStereo(GLfloat fovy, GLfloat aspect, GLfloat separation, GLfloat convergence, boolean skip_eye_translate)
 {
 	const GLfloat zNear = NEAR_CLIPPING_PLANE;
 	const GLfloat zFar = FAR_CLIPPING_PLANE;
 	const GLfloat radians = (GLfloat)(fovy / 2.0f * M_PIl / 180.0f);
-	const GLfloat horFov = (GLfloat)tan((double)radians);
-	const GLfloat verFov = horFov / aspect;
-	const GLfloat eyeOffset = -iod * 0.5f / focal;
+	const GLfloat tanHalfFov = (GLfloat)tan((double)radians);   // horizontal
 	const GLfloat deltaZ = zFar - zNear;
-	GLfloat top, bottom, left, right;
 
-	if ((fabsf((float)deltaZ) < 1.0E-36f) || fpclassify(horFov) == FP_ZERO
-		|| fpclassify(aspect) == FP_ZERO || focal <= 0.0f)
+	if ((fabsf((float)deltaZ) < 1.0E-36f) || fpclassify(tanHalfFov) == FP_ZERO
+		|| fpclassify(aspect) == FP_ZERO || convergence <= 0.0f)
 	{
 		GLPerspective(fovy, aspect);
 		return;
 	}
 
-	// Bounds in world space at the near plane (tan-space * zNear).
-	top    =  zNear * verFov;
-	bottom = -top;
-	right  = zNear * ( horFov + eyeOffset);
-	left   = zNear * (-horFov + eyeOffset);
-
 	{
+		// Symmetric perspective, with the stereo shear in [2][0]. Compare a
+		// plain glFrustum build: 2*zNear/(right-left) reduces to 1/tan for a
+		// symmetric frustum, and the vertical half-angle is tan/aspect.
 		GLfloat m[4][4] = {
-			{ (2.0f*zNear)/(right-left), 0.0f,                      0.0f,                       0.0f},
-			{ 0.0f,                      (2.0f*zNear)/(top-bottom), 0.0f,                       0.0f},
-			{ (right+left)/(right-left), (top+bottom)/(top-bottom), -(zFar+zNear)/deltaZ,      -1.0f},
-			{ 0.0f,                      0.0f,                      -(2.0f*zFar*zNear)/deltaZ,  0.0f},
+			{ 1.0f/tanHalfFov, 0.0f,                   0.0f,                       0.0f},
+			{ 0.0f,            aspect/tanHalfFov,      0.0f,                       0.0f},
+			{ separation,      0.0f,                  -(zFar+zNear)/deltaZ,       -1.0f},
+			{ 0.0f,            0.0f,                  -(2.0f*zFar*zNear)/deltaZ,   0.0f},
 		};
 		pglMultMatrixf(&m[0][0]);
 	}
 
+	// Half the derived baseline, along camera-right. This is the half of the
+	// rig that makes disparity depth-DEPENDENT; the shear alone would give
+	// every object the same constant offset.
 	if (!skip_eye_translate)
-		pglTranslatef(-iod * 0.5f, 0.0f, 0.0f);
+		pglTranslatef(separation * tanHalfFov * convergence, 0.0f, 0.0f);
 }
 
 static void GLProject(GLfloat objX, GLfloat objY, GLfloat objZ,
@@ -2186,6 +2288,12 @@ static void Shader_SetUniforms(FSurfaceInfo *Surface, GLRGBAFloat *poly, GLRGBAF
 
 		UNIFORM_1(shader->uniforms[gluniform_leveltime], ((float)shader_leveltime) / TICRATE, pglUniform1f);
 
+		// Outside the Surface != NULL block on purpose: the stereo composites
+		// draw through PreparePolygon(NULL, ...), which is exactly the path
+		// that needs these.
+		UNIFORM_1(shader->uniforms[gluniform_ghost_contrast], shader_ghost_contrast, pglUniform1f);
+		UNIFORM_1(shader->uniforms[gluniform_ghost_lift], shader_ghost_lift, pglUniform1f);
+
 		#undef UNIFORM_1
 		#undef UNIFORM_2
 		#undef UNIFORM_3
@@ -2284,6 +2392,10 @@ static boolean Shader_CompileProgram(gl_shader_t *shader, GLint i, const GLchar 
 
 	// misc. (custom shaders)
 	shader->uniforms[gluniform_leveltime] = GETUNI("leveltime");
+
+	// stereoscopic 3D
+	shader->uniforms[gluniform_ghost_contrast] = GETUNI("ghost_contrast");
+	shader->uniforms[gluniform_ghost_lift] = GETUNI("ghost_lift");
 
 #undef GETUNI
 
@@ -3127,8 +3239,8 @@ EXPORT void HWRAPI(SetTransform) (FTransform *stransform)
 {
 	static boolean special_splitscreen;
 	SINT8 stereo_eye = 0;
-	float stereo_iod = 0.0f;
-	float stereo_focal = 1.0f;
+	float stereo_separation = 0.0f;
+	float stereo_convergence = 1.0f;
 	boolean stereo_skybox = false;
 	boolean shearing = false;
 	float used_fov;
@@ -3157,8 +3269,8 @@ EXPORT void HWRAPI(SetTransform) (FTransform *stransform)
 
 		special_splitscreen = stransform->splitscreen;
 		stereo_eye = stransform->eyeOffset;
-		stereo_iod = stransform->iod;
-		stereo_focal = stransform->focalLength;
+		stereo_separation = stransform->separation;
+		stereo_convergence = stransform->convergence;
 		stereo_skybox = stransform->skyboxPass;
 		shearing = stransform->shearing;
 	}
@@ -3188,7 +3300,11 @@ EXPORT void HWRAPI(SetTransform) (FTransform *stransform)
 		// splitscreen uses, plus the 2x aspect that compensates for the
 		// halved viewport. The off-axis frustum then operates over the
 		// composed FOV, producing correct per-eye geometry within each
-		// player's half.
+		// player's half. Under the clip-space parameterization the shear is
+		// unaffected by either adjustment -- on-screen disparity is the same
+		// fraction of the eye's width in splitscreen as out of it -- while
+		// the derived eye baseline narrows along with the fudged FOV, which
+		// is what keeps the two halves self-consistent.
 		float fov_used = used_fov;
 		float aspect   = ASPECT_RATIO;
 		if (special_splitscreen)
@@ -3196,7 +3312,7 @@ EXPORT void HWRAPI(SetTransform) (FTransform *stransform)
 			fov_used = (float)(atan(tan(fov_used*M_PIl/360)*0.8)*360/M_PIl);
 			aspect   = 2*ASPECT_RATIO;
 		}
-		GLPerspectiveStereo(fov_used, aspect, stereo_iod, stereo_focal, stereo_skybox);
+		GLPerspectiveStereo(fov_used, aspect, stereo_separation, stereo_convergence, stereo_skybox);
 	}
 	else if (special_splitscreen)
 	{
@@ -3832,6 +3948,15 @@ EXPORT void HWRAPI(ResetStereoMode)(void)
 	pglViewport(0, 0, screen_width, screen_height);
 	pglDisable(GL_SCISSOR_TEST);
 	pglColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
+// Ghost/crosstalk reduction settings for the present-time composites. See
+// GLSL_GHOST_REDUCE_HELPER for what the two levers do and why neither is
+// adaptive. contrast 1.0 / lift 0.0 is the exact no-op.
+EXPORT void HWRAPI(SetStereoGhostReduction)(float contrast, float lift)
+{
+	shader_ghost_contrast = (GLfloat)contrast;
+	shader_ghost_lift = (GLfloat)lift;
 }
 
 // The SR weaver writes into the currently bound viewport, so the LeiaSR

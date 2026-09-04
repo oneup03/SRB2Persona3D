@@ -123,12 +123,16 @@ typedef struct
 	boolean     shearing;        // 14042019
 	float       viewaiming;      // 17052019
 	// Stereoscopic 3D state. eyeOffset is -1/0/+1 (left/mono/right).
-	// When eyeOffset != 0 the renderer builds an off-axis frustum using
-	// iod (signed eye separation) and focalLength (convergence plane).
-	// skyboxPass collapses the focal plane to push sky to "infinity" disparity.
+	// When eyeOffset != 0 the renderer builds an off-axis frustum from
+	// separation -- the CLIP-SPACE shear, already signed for this eye, which
+	// the projection uses verbatim -- and convergence, the world-unit
+	// distance at which parallax is zero. Convergence no longer scales the
+	// background disparity; it only sets the per-eye view translation, so
+	// skyboxPass drops that translation to leave the shear alone, which is
+	// exactly the "infinity" disparity the sky wants.
 	SINT8       eyeOffset;
-	float       iod;
-	float       focalLength;
+	float       separation;
+	float       convergence;
 	boolean     skyboxPass;
 } FTransform;
 
@@ -162,6 +166,10 @@ enum
 	SHADER_COLUMN_INTERLACED_COMPOSITE,
 	SHADER_CHECKERBOARD_COMPOSITE,
 	SHADER_ANAGLYPH_DUBOIS_COMPOSITE,
+	// Straight passthrough that exists only to run the ghost/crosstalk
+	// range compression, for the modes (SbS, TaB, LeiaSR) whose frame is
+	// already in its final layout and would otherwise need no composite.
+	SHADER_STEREO_GHOST_COMPOSITE,
 
 	NUMBASESHADERS,
 };

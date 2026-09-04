@@ -35,10 +35,12 @@ typedef enum
 #define STEREO_EYE_RIGHT  (+1)
 
 extern consvar_t cv_stereomode;
-extern consvar_t cv_stereoipd;
+extern consvar_t cv_stereosep;
 extern consvar_t cv_stereofoclen;
 extern consvar_t cv_stereoswap;
 extern consvar_t cv_stereohuddepth;
+extern consvar_t cv_stereoghostcontrast;
+extern consvar_t cv_stereoghostlift;
 
 // Register all stereo CVARs with the console. Call from R_RegisterEngineStuff.
 void R_RegisterStereoVars(void);
@@ -67,8 +69,49 @@ void R_EndStereoEye(void);
 SINT8  R_GetCurrentEye(void);                  // -1, 0, +1 — perspective eye
                                               // (the HUD shift and the off-axis
                                               // frustum follow this; honors "Swap Eyes")
-float R_GetStereoIOD(void);                   // signed eye separation for current eye
-float R_GetStereoFocal(void);                 // convergence-plane distance
+
+// Clip-space separation for the current eye, SIGN INCLUDED. This is the
+// projection's horizontal shear coefficient outright — the off-axis frustum
+// is the ordinary symmetric one with this dropped into the [2][0] slot, and
+// nothing else about it changes. Its magnitude is the total background
+// disparity as a fraction of the screen width, so 0.05 puts objects at
+// infinity 5% of the screen apart; the physical ceiling is roughly
+// IPD / screen_width (~0.105 on a 27" 16:9), beyond which the eyes have to
+// diverge and the image cannot be fused.
+//
+// Mono returns 0. See the sign-convention note in r_stereo.c: the same signed
+// value drives the projection shear AND the screen-space HUD/overlay shift,
+// which is only true because both work out to -current_eye here — do not
+// assume that of another codebase.
+float R_GetStereoSeparation(void);
+
+// Convergence-plane distance in world units — where zero parallax sits.
+// Under the clip-space parameterization this NO LONGER scales the background
+// disparity (that is fixed by the separation above); it only moves what sits
+// in front of the screen plane. The per-eye view translation the renderer
+// applies is derived from it, 2 * separation * tan(fov/2) * convergence for
+// the full baseline, so the physical eye offset now moves with both FoV and
+// convergence instead of being a stored constant.
+float R_GetStereoConvergence(void);
+
+// Ghost/crosstalk reduction, applied in the present-time composite (see the
+// composite shaders in r_opengl.c). Every stereo display leaks some of each
+// eye into the other, and how visible that is depends on the brightness
+// difference between the eyes — so compressing the signal range before it
+// reaches the panel reduces what you see.
+//   contrast: squeezes toward mid-grey, 1.0 = off. Leaves (1-contrast)/2 of
+//             headroom at each end of the range. Costs image contrast.
+//   lift:     raises the black floor, leaves white alone, 0.0 = off. Displays
+//             that CANCEL crosstalk (the LeiaSR weaver does) pre-subtract a
+//             fraction of the opposite eye, which drives dark pixels below
+//             zero where the render target clamps them — and the clamped part
+//             is what survives as a ghost. Lift buys that foot-room back.
+//             Does nothing on a display that doesn't cancel.
+// Both return exactly their no-op value when stereo is off, so the caller can
+// branch and skip the pass entirely.
+float   R_GetStereoGhostContrast(void);
+float   R_GetStereoGhostLift(void);
+boolean R_StereoGhostReductionActive(void);
 
 // Placement eye for the active pass — the original sign passed to
 // R_BeginStereoEye, before "Swap Eyes" inverts the perspective. Use this
@@ -80,10 +123,14 @@ SINT8  R_GetCurrentPlacementEye(void);
 // HUD parallax helpers. Returns the X-pixel offset to apply to chrome HUD
 // elements during the current eye pass. Mono returns 0.
 //
-// Depth-fraction sign convention, shared by cv_stereohuddepth and
-// R_GetStereoWorldHUDOffset: 0 is the screen plane, NEGATIVE is further
-// into the screen (-1.0 == optical infinity),
-// POSITIVE is out toward the viewer. Lower is deeper.
+// Depth fractions inside the renderer run 0 at the screen plane, NEGATIVE
+// further into the screen (-1.0 == optical infinity) and POSITIVE out toward
+// the viewer -- that is just frac = convergence/z - 1.
+//
+// cv_stereohuddepth is stored the other way up, so the slider reads
+// left-to-right as "further away": HIGHER IS DEEPER, +100 is optical infinity,
+// 0 is the screen plane, negative pops the HUD out. r_stereo.c negates it in
+// exactly one place.
 INT32 R_GetStereoHUDShift(void);
 
 // Convert a screen-pixel X offset into BASE (320-wide) fixed-point coords, the

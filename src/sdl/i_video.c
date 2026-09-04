@@ -2002,6 +2002,7 @@ void VID_StartupOpenGL(void)
 		HWD.pfnResetStereoMode      =hwSym("ResetStereoMode",NULL);
 		HWD.pfnDrawInterlacedComposite=hwSym("DrawInterlacedComposite",NULL);
 		HWD.pfnSetPresentViewport   =hwSym("SetPresentViewport",NULL);
+		HWD.pfnSetStereoGhostReduction=hwSym("SetStereoGhostReduction",NULL);
 
 		HWD.pfnCompileShaders   = hwSym("CompileShaders",NULL);
 		HWD.pfnCleanShaders     = hwSym("CleanShaders",NULL);

@@ -113,6 +113,11 @@ EXPORT void HWRAPI(DrawInterlacedComposite)(INT32 width, INT32 height);
 // bound viewport, and after the eye loop / ResetStereoMode the viewport is
 // still at the engine's render size (which may be smaller than the window).
 EXPORT void HWRAPI(SetPresentViewport)(INT32 width, INT32 height);
+// Ghost/crosstalk reduction levers for the present-time composite shaders:
+// contrast squeezes the signal toward mid-grey, lift raises the black floor.
+// (1.0, 0.0) is the exact no-op. Set once per frame from the present path
+// before any composite draw.
+EXPORT void HWRAPI(SetStereoGhostReduction)(float contrast, float lift);
 
 #define SCREENVERTS 10
 EXPORT void HWRAPI(PostImgRedraw) (float points[SCREENVERTS][SCREENVERTS][2]);
@@ -184,6 +189,7 @@ struct hwdriver_s
 	ResetStereoMode     pfnResetStereoMode;
 	DrawInterlacedComposite pfnDrawInterlacedComposite;
 	SetPresentViewport  pfnSetPresentViewport;
+	SetStereoGhostReduction pfnSetStereoGhostReduction;
 };
 
 extern struct hwdriver_s hwdriver;

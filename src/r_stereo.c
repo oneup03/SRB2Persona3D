@@ -9,8 +9,28 @@
 /// \file  r_stereo.c
 /// \brief Stereoscopic 3D rendering: SbS, TaB, Anaglyph, Interlaced.
 ///
-/// Mirrors the projection model used by the SRB2 3DS port: per-eye off-axis
-/// asymmetric frustum with user-tunable IPD and convergence (focal) plane.
+/// Per-eye off-axis asymmetric frustum, parameterized in CLIP SPACE: the user
+/// knob is the horizontal shear the projection applies, not a physical eye
+/// separation in world units. The shear IS the setting --
+///
+///     projection[2][0] += separation
+///
+/// -- and its magnitude is the total background disparity as a fraction of the
+/// screen width, which is the same quantity that bounds it (disparity wider
+/// than the viewer's IPD forces the eyes to diverge). That makes the slider a
+/// number the player can actually see on their own display, and it makes the
+/// whole rig FoV-independent by construction: no reference-FoV slider, no
+/// tan(fov/2) auto-scale, no EMA settling wrongly for a few frames after a
+/// hard FoV change. Convergence stops being coupled to it too -- it now only
+/// moves what sits in front of the screen plane, and the physical eye
+/// baseline is DERIVED per frame (2 * separation * tan(fov/2) * convergence)
+/// rather than stored.
+///
+/// This replaced an eye-separation-in-world-units parameterization; the two
+/// are algebraically identical, the old shear expanding to
+/// ipd / (2 * focal * tan(fov/2)) -- a constant, which is exactly the
+/// clip-space separation.
+///
 /// Eye state is stashed in module globals and consumed by HWR_SetupView when
 /// it builds FTransform for each pass.
 
@@ -49,39 +69,56 @@ static CV_PossibleValue_t stereomode_cons_t[] = {
 };
 
 // CVAR storage uses small whole-number "slider units" so the in-game slider
-// shows friendly values; the runtime multiplies them up to recover the world
-// scale. Choosing the multiplier per-CVAR (×100 for IPD, ×1000 for focal)
-// keeps each slider's label range close to its useful tuning band.
-//   stereoipd     slider value × 0.1   = world units  (slider 10 = 1.0 wu)
-//   stereofoclen  slider value × 1.0   = world units  (slider 100 = 100.0 wu)
-//   stereohuddepth slider value × 0.01 = -1..+1 fraction
+// shows friendly values; the runtime scales them down to the real quantity.
+//   stereosep            slider x 0.001 = clip-space separation (slider 30 = 0.030)
+//   stereofoclen         slider x 1.0   = convergence, world units
+//   stereohuddepth       slider x 0.01  = depth fraction, NEGATED (below)
+//   stereoghostcontrast  slider x 0.01  = 0.50..1.00 contrast multiplier
+//   stereoghostlift      slider x 0.001 = 0.000..0.100 black floor
 //
-// Sign convention for the depth fractions (see Stereo_DepthFracForDistance):
-// a fraction of 0 puts the element ON the screen plane, NEGATIVE values push
-// it BACK into the screen (-1.0 == optical infinity), and POSITIVE values pull
-// it OUT toward the viewer. So *lower is deeper* — the sliders read as
-// "distance", not "pop-out".
+// Two sign conventions meet at cv_stereohuddepth, so keep them straight.
 //
-// SRB2 world-unit scale: player ≈32 wu tall (~6 ft), characters ≈50–200 wu
-// away, rooms 100s–1000s wu across. The asymptotic disparity is
-// iod / (focal × tan(fov/2)), so depth differentiation requires iod that's
-// non-trivial relative to the focal distance. A "true human" IPD at SRB2
-// scale is ~1.2 wu; for game-style exaggerated stereo, 3–15 wu produces
-// strong depth pop. Pair with focal set to typical viewing distance
-// (50–500 wu) so closer objects pop forward and farther ones recede.
-// Out-of-range values can still be typed at the console — the slider just
+// INTERNALLY (Stereo_DepthFracForDistance, Stereo_ShiftPixelsForFrac and the
+// projection itself) a depth fraction of 0 is the screen plane, NEGATIVE is
+// further back (-1.0 == optical infinity) and POSITIVE is out toward the
+// viewer. That falls out of frac = convergence/z - 1 and is not a choice.
+//
+// THE SLIDER IS THE OPPOSITE, because the internal sense reads backwards to a
+// player: dragging right should push the HUD further away, not pull it into
+// their face. So the CVAR is negated on the way in -- higher is deeper, +100
+// is optical infinity, 0 is the screen plane, and the small negative tail pops
+// the HUD out. Stereo_HudDepthFrac is the single place that conversion
+// happens; nothing else should read cv_stereohuddepth directly.
+//
+// Separation is a screen-width fraction, so it means the same thing at every
+// resolution, FoV and world scale: 0.030 puts objects at infinity 3% of the
+// screen width apart, 0.050 puts them 5% apart. The hard ceiling is the
+// viewer's IPD over their screen width - about 0.105 on a 27" 16:9 panel, and
+// less on anything smaller - past which the eyes have to turn outward and no
+// amount of comfort tuning helps. 0.150 is the slider max so the range covers
+// large TVs and projectors; on a monitor the useful band is well under half
+// of that. Convergence is still in SRB2's world units (player ~32 wu tall,
+// characters ~50-200 wu away), and unlike the old parameterization it now
+// only decides what pops OUT of the screen - the background depth is
+// separation's job alone, so pushing the convergence plane back no longer
+// flattens the whole image.
+// Out-of-range values can still be typed at the console - the slider just
 // visually clamps.
-static CV_PossibleValue_t stereoipd_cons_t[]      = {{10,  "MIN"}, {400,  "MAX"}, {0, NULL}};   // 1.0–10.0 wu (default 6.0 wu sits at ~56%)
-static CV_PossibleValue_t stereofoclen_cons_t[]   = {{50,  "MIN"}, {250,  "MAX"}, {0, NULL}};   // 50–150 wu (default 100 wu centered)
-static CV_PossibleValue_t stereohuddepth_cons_t[]       = {{-100, "MIN"}, { 50, "MAX"}, {0, NULL}};   // -1.00 (infinity) .. +0.50 (half the convergence distance, pops out)
+static CV_PossibleValue_t stereosep_cons_t[]            = {{0,    "MIN"}, {150, "MAX"}, {0, NULL}};   // 0.000-0.150 screen-width fraction (default 0.030)
+static CV_PossibleValue_t stereofoclen_cons_t[]         = {{50,   "MIN"}, {250, "MAX"}, {0, NULL}};   // 50-250 wu (default 100 wu centered)
+static CV_PossibleValue_t stereohuddepth_cons_t[]       = {{-50,  "MIN"}, {100, "MAX"}, {0, NULL}};   // -0.50 (pops out to half the convergence distance) .. +1.00 (optical infinity)
+static CV_PossibleValue_t stereoghostcontrast_cons_t[]  = {{50,   "MIN"}, {100, "MAX"}, {0, NULL}};   // 0.50-1.00 (100 = off)
+static CV_PossibleValue_t stereoghostlift_cons_t[]      = {{0,    "MIN"}, {100, "MAX"}, {0, NULL}};   // 0.000-0.100 (0 = off)
 
 static void Stereo_OnChange(void);
 
 consvar_t cv_stereomode             = CVAR_INIT("stereomode",             "Off",  CV_SAVE|CV_CALL, stereomode_cons_t,    Stereo_OnChange);
-consvar_t cv_stereoipd              = CVAR_INIT("stereoipd",              "60",  CV_SAVE,         stereoipd_cons_t,     NULL);   // ×0.1 → 6.0 wu IPD (~5× human-scale, clear depth pop at default focal)
-consvar_t cv_stereofoclen           = CVAR_INIT("stereofoclen",           "100", CV_SAVE,         stereofoclen_cons_t,  NULL);   // ×1.0 → 100.0 wu convergence (typical scene viewing distance)
+consvar_t cv_stereosep              = CVAR_INIT("stereosep",              "30",   CV_SAVE,         stereosep_cons_t,     NULL);   // x0.001 -> 0.030 of the screen width at infinity
+consvar_t cv_stereofoclen           = CVAR_INIT("stereofoclen",           "100",  CV_SAVE,         stereofoclen_cons_t,  NULL);   // x1.0 -> 100.0 wu convergence (typical scene viewing distance)
 consvar_t cv_stereoswap             = CVAR_INIT("stereoswap",             "Off",  CV_SAVE,         CV_OnOff,             NULL);
-consvar_t cv_stereohuddepth         = CVAR_INIT("stereohuddepth",         "-30",  CV_SAVE,         stereohuddepth_cons_t,       NULL);   // -0.30 fraction — HUD sits a little way behind the screen plane (~1.4× focal)
+consvar_t cv_stereohuddepth         = CVAR_INIT("stereohuddepth",         "30",   CV_SAVE,         stereohuddepth_cons_t,       NULL);   // 0.30 deep - HUD sits a little way behind the screen plane (~1.4x convergence)
+consvar_t cv_stereoghostcontrast    = CVAR_INIT("stereoghostcontrast",    "100",  CV_SAVE,         stereoghostcontrast_cons_t,  NULL);   // x0.01 -> 1.00, i.e. off
+consvar_t cv_stereoghostlift        = CVAR_INIT("stereoghostlift",        "0",    CV_SAVE,         stereoghostlift_cons_t,      NULL);   // x0.001 -> 0.000, i.e. off
 
 // current_eye holds the *perspective* eye for the active pass — it tracks
 // which eye's view is being rendered (and is what the HUD shift and
@@ -96,8 +133,11 @@ consvar_t cv_stereohuddepth         = CVAR_INIT("stereohuddepth",         "-30",
 // region rather than the swapped perspective.
 static SINT8    current_eye           = STEREO_EYE_MONO;
 static SINT8    current_placement_eye = STEREO_EYE_MONO;
-static float   current_iod           = 0.0f;
-static float   current_focal         = 1.0f;
+// Signed clip-space separation for the active pass: the projection's [2][0]
+// shear coefficient, ready to use as-is. See the sign note above
+// Stereo_EyeDir.
+static float   current_separation    = 0.0f;
+static float   current_convergence   = 1.0f;
 static boolean backbuffer_is_stereo  = false;
 static boolean stereo_render_in_progress = false;
 
@@ -120,10 +160,12 @@ static void Stereo_OnChange(void)
 void R_RegisterStereoVars(void)
 {
 	CV_RegisterVar(&cv_stereomode);
-	CV_RegisterVar(&cv_stereoipd);
+	CV_RegisterVar(&cv_stereosep);
 	CV_RegisterVar(&cv_stereofoclen);
 	CV_RegisterVar(&cv_stereoswap);
 	CV_RegisterVar(&cv_stereohuddepth);
+	CV_RegisterVar(&cv_stereoghostcontrast);
+	CV_RegisterVar(&cv_stereoghostlift);
 }
 
 boolean R_StereoActive(void)
@@ -185,13 +227,38 @@ SINT8 R_StereoEyeForPass(int pass)
 		return STEREO_EYE_MONO;
 
 	// Always pass 0 = LEFT placement, pass 1 = RIGHT placement. The "Swap
-	// Eyes" CVAR is applied inside R_BeginStereoEye by inverting the iod
-	// sign (perspective) without moving the placement — so the physical-
-	// screen region chosen by SetStereoMode (left half / red channel / even
-	// rows) ends up showing the OPPOSITE eye's view. Inverting both at the
+	// Eyes" CVAR is applied inside R_BeginStereoEye by inverting the
+	// separation sign (perspective) without moving the placement — so the
+	// physical-screen region chosen by SetStereoMode (left half / red channel
+	// / even rows) ends up showing the OPPOSITE eye's view. Inverting both at the
 	// same time (the previous behavior) cancelled out and made the toggle a
 	// no-op for SbS/TaB/Anaglyph.
 	return (pass == 0) ? STEREO_EYE_LEFT : STEREO_EYE_RIGHT;
+}
+
+// Per-eye direction for BOTH the projection shear and every screen-space
+// shift derived from it.
+//
+// A codebase with an off-axis rig usually has two independent per-eye sign
+// switches -- one for which way the frustum bends, one for which way a
+// composited overlay slides -- and they are not guaranteed to agree, because
+// they answer different questions. Here they do agree, and the algebra says
+// why: the rig puts a point at view-space depth z at an NDC x-offset of
+//
+//     ndc_dx = -eye * separation * (convergence/z - 1)
+//
+// away from the mono projection, which is the same -eye the shear carries. So
+// one signed value drives both, and current_separation below is that value.
+// Do not carry the assumption to another renderer without re-deriving it.
+//
+// Verify each direction separately if the projection is ever reworked:
+//  * shear: an object nearer than the convergence plane must show CROSSED
+//    disparity (left-eye image displaced to the RIGHT of the right-eye one).
+//  * overlay: with a world-anchored HUD element, moving the object from far
+//    to near must slide the element the same way the geometry it labels goes.
+static float Stereo_EyeDir(void)
+{
+	return (float)(-current_eye);
 }
 
 void R_BeginStereoEye(SINT8 eye)
@@ -199,27 +266,28 @@ void R_BeginStereoEye(SINT8 eye)
 	// "Swap Eyes": the placement eye stays as passed in (so SetStereoMode
 	// already routed us to the correct half / channel / row). We only flip
 	// which perspective gets rendered into that placement, by inverting the
-	// effective eye used to derive the iod sign and the HUD-shift state.
+	// effective eye used to derive the separation sign and the HUD-shift
+	// state.
 	SINT8 perspective_eye = eye;
 	if (cv_stereoswap.value && eye != STEREO_EYE_MONO)
 		perspective_eye = (eye == STEREO_EYE_LEFT) ? STEREO_EYE_RIGHT : STEREO_EYE_LEFT;
 
 	current_eye           = perspective_eye;
 	current_placement_eye = eye;
-	// stereofoclen slider value is already in world units (×1.0).
-	current_focal = (cv_stereofoclen.value > 0) ? (float)cv_stereofoclen.value : 1.0f;
+	// stereofoclen slider value is already in world units (x1.0).
+	current_convergence = (cv_stereofoclen.value > 0) ? (float)cv_stereofoclen.value : 1.0f;
 
 	if (perspective_eye == STEREO_EYE_MONO)
 	{
-		current_iod = 0.0f;
+		current_separation = 0.0f;
 	}
 	else
 	{
-		// stereoipd slider value × 0.1 = world units. Half-IPD per eye, signed
-		// by eye direction. Matches the off-axis frustum convention where
-		// iod > 0 shifts the right eye's frustum.
-		const float ipd = cv_stereoipd.value * 0.1f;
-		current_iod = (perspective_eye == STEREO_EYE_LEFT) ? -ipd : +ipd;
+		// stereosep slider value x 0.001 = the clip-space separation, which
+		// IS the projection's shear coefficient once signed. Nothing here
+		// depends on FoV, convergence or world scale -- that independence is
+		// the whole point of the parameterization.
+		current_separation = Stereo_EyeDir() * (cv_stereosep.value * 0.001f);
 	}
 }
 
@@ -227,8 +295,8 @@ void R_EndStereoEye(void)
 {
 	current_eye           = STEREO_EYE_MONO;
 	current_placement_eye = STEREO_EYE_MONO;
-	current_iod           = 0.0f;
-	current_focal         = 1.0f;
+	current_separation    = 0.0f;
+	current_convergence   = 1.0f;
 }
 
 SINT8 R_GetCurrentEye(void)
@@ -241,88 +309,160 @@ SINT8 R_GetCurrentPlacementEye(void)
 	return current_placement_eye;
 }
 
-float R_GetStereoIOD(void)
+float R_GetStereoSeparation(void)
 {
-	return current_iod;
+	return current_separation;
 }
 
-float R_GetStereoFocal(void)
+float R_GetStereoConvergence(void)
 {
-	return current_focal;
+	return current_convergence;
 }
 
-// Convert (iod_world, focal_world) into the per-eye screen-pixel shift
-// relative to the mono view. Total inter-ocular disparity (right minus left)
-// = 2 × this, so half the formula is intentional: the right eye shifts by
-// -shift and the left eye by +shift, summing to the full disparity.
+float R_GetStereoGhostContrast(void)
+{
+	if (!R_StereoActive())
+		return 1.0f;   // exact no-op
+
+	return cv_stereoghostcontrast.value * 0.01f;
+}
+
+float R_GetStereoGhostLift(void)
+{
+	if (!R_StereoActive())
+		return 0.0f;   // exact no-op
+
+	return cv_stereoghostlift.value * 0.001f;
+}
+
+boolean R_StereoGhostReductionActive(void)
+{
+	if (!R_StereoActive())
+		return false;
+
+	// Compare against the slider units, not the scaled floats, so "off" is
+	// an exact integer test and the untouched present path stays bit-exact.
+	return (cv_stereoghostcontrast.value != 100) || (cv_stereoghostlift.value != 0);
+}
+
+// Per-eye screen-pixel shift for an element at depth fraction `frac`, i.e.
+// the screen-space twin of what the projection shear does to world geometry:
 //
-//   disparity_px(d→∞) = iod * (vid.width/2) / (focal * tan(fov/2))
-//   per_eye_shift_px  = disparity_px / 2
-//                     = iod * (vid.width/4) / (focal * tan(fov/2))
-static float Stereo_PixelShiftPerEye(float iod_world, float focal_world)
+//   shift_px = dir * separation * (convergence/z - 1) * eye_w / 2
+//            = current_separation * frac * eye_w / 2
+//
+// with dir already folded into current_separation. No FoV term and no unit
+// conversion survive the clip-space parameterization -- compare the old form,
+// which needed both, and needed the FoV it used here to match the one the
+// projection used, something splitscreen quietly broke (the world got SRB2's
+// 0.8 vertical-FoV fudge, this did not). Now neither cares.
+//
+// eye_w is vid.width rather than the eye viewport's own width because the
+// caller converts through R_StereoBaseOffsetFromPixels, which divides by
+// vid.width to reach the BASE 320-wide space that maps across whatever
+// viewport the eye was given. The two conventions have to agree, and they do.
+//
+// The clamp is a safety net against a bad depth, and it is deliberately
+// ASYMMETRIC. Behind the screen plane the constraint is physical: uncrossed
+// disparity past the viewer's IPD forces the eyes to diverge and cannot be
+// fused at any comfort setting, so ~0.05 eye-widths per eye is the real
+// ceiling. In front the eyes converge inward instead, there is no divergence
+// to protect against, and reusing the same limit would just clip valid
+// pop-out -- an element nearer than convergence/(1 + 2*limit/separation)
+// would stop tracking depth entirely and sit at a fixed offset, which reads
+// as "the HUD came unstuck from the enemy" rather than as clipping.
+//
+// Branch on `frac`, never on the sign of the shift: the eye direction is
+// folded into current_separation, so that sign says which EYE, not
+// near-versus-far, and it flips between passes while the near/far sense does
+// not.
+//
+// The behind limit also has to yield to the scene itself. frac is bounded
+// below by -1 for any depth in front of the camera, so the deepest an element
+// can legitimately go is separation/2 per eye -- exactly what the background
+// is already doing. Below separation 0.10 the fixed limit is therefore
+// unreachable, and above it the fixed limit would clamp perfectly legitimate
+// values, pulling an at-infinity overlay FORWARD of the sky behind it. Taking
+// whichever is larger keeps the guard for a garbage depth while never second-
+// guessing a separation the player chose.
+#define STEREO_SHIFT_LIMIT_NEAR   0.15f   // pop-out, crossed disparity
+#define STEREO_SHIFT_LIMIT_BEHIND 0.05f   // ~IPD / screen width
+static float Stereo_ShiftPixelsForFrac(float frac)
 {
-	if (focal_world <= 0.0f)
+	const float eye_w = (float)vid.width;
+	const float at_infinity = fabsf(current_separation) * 0.5f;
+	float limit, shift;
+
+	if (eye_w <= 0.0f)
 		return 0.0f;
 
-	const float fovrad = (FIXED_TO_FLOAT(cv_fov.value) * (float)M_PIl) / 360.0f;
-	const float tan_half = (float)tan((double)fovrad);
-	if (tan_half <= 0.0f)
-		return 0.0f;
+	if (frac > 0.0f)
+		limit = STEREO_SHIFT_LIMIT_NEAR;
+	else
+		limit = (at_infinity > STEREO_SHIFT_LIMIT_BEHIND) ? at_infinity : STEREO_SHIFT_LIMIT_BEHIND;
 
-	return iod_world * ((float)vid.width * 0.25f) / (focal_world * tan_half);
+	shift = current_separation * frac * 0.5f;   // as a fraction of eye_w
+
+	if (shift > limit)
+		shift = limit;
+	else if (shift < -limit)
+		shift = -limit;
+
+	return shift * eye_w;
+}
+
+// cv_stereohuddepth in the INTERNAL depth-fraction sense: negated, because
+// the slider runs the other way round (see the convention note up top). Every
+// read of that CVAR goes through here.
+static float Stereo_HudDepthFrac(void)
+{
+	return -cv_stereohuddepth.value / 100.0f;
 }
 
 INT32 R_GetStereoHUDShift(void)
 {
+	float px;
+
 	if (!R_StereoActive() || current_eye == STEREO_EYE_MONO)
 		return 0;
-	if (cv_stereohuddepth.value == 0 || cv_stereoipd.value == 0)
+	if (cv_stereohuddepth.value == 0 || cv_stereosep.value == 0)
 		return 0;
 
-	const float depth_frac = cv_stereohuddepth.value / 100.0f; // -1..+1
-	const float ipd        = cv_stereoipd.value * 0.1f;
-	return (INT32)(-current_eye * depth_frac * Stereo_PixelShiftPerEye(ipd, current_focal));
+	px = Stereo_ShiftPixelsForFrac(Stereo_HudDepthFrac());
+	return (INT32)px;
 }
 
-// Depth fraction (the same -1..+1 quantity the HUD depth CVAR stores) that
-// puts an element at world distance `z` along the view axis.
+// Internal depth fraction that puts an element at world distance `z` along
+// the view axis -- the same quantity Stereo_HudDepthFrac produces for the HUD,
+// so the two are directly comparable.
 //
 // Derivation. For a point at view-space depth z the off-axis rig in
 // GLPerspectiveStereo produces an NDC x-offset from the mono projection of
 //
-//   ndc_dx = s * (ipd/2) * (1/focal - 1/z) / tan(fov/2)
+//   ndc_dx = -eye * separation * (convergence/z - 1)
 //
-// where s is the eye sign. (Both halves of the rig contribute: the frustum
-// shear gives the 1/focal term, the eye translate gives the -1/z term. Note
-// this is independent of the point's screen x, so one scalar offset is exact
-// for anything drawn at that depth, anywhere on screen.)
+// (Both halves of the rig contribute: the frustum shear gives the constant
+// term, the eye translate gives the 1/z term. Note this is independent of the
+// point's screen x, so one scalar offset is exact for anything drawn at that
+// depth, anywhere on screen.)
 //
-// The flat HUD shift is -s * frac * P where P is the asymptotic per-eye shift
-// Stereo_PixelShiftPerEye returns. Equating the two and solving:
+// A flat element at depth fraction `frac` gets -eye * separation * frac, so
+// equating the two:
 //
-//   frac = focal/z - 1
+//   frac = convergence/z - 1
 //
-// which sanity-checks at the endpoints: z == focal gives 0 (screen plane) and
-// z == infinity gives -1 (optical infinity). Confirms "lower is deeper".
-#define STEREO_WORLD_DEPTH_MAX 2.0f   // clamp at z = focal/3; nearer than that the
-                                      // parallax runs away and the icon would tear
-                                      // off the object it belongs to
+// which sanity-checks at the endpoints: z == convergence gives 0 (screen
+// plane) and z == infinity gives -1 (optical infinity). Confirms "lower is
+// deeper". Unclamped here -- Stereo_ShiftPixelsForFrac owns the safety limit,
+// because a limit only means something once it is expressed as disparity.
 static float Stereo_DepthFracForDistance(fixed_t viewdist)
 {
 	const float z = FIXED_TO_FLOAT(viewdist);
-	float frac;
 
-	if (z <= 0.0f)   // at or behind the eye — caller shouldn't be drawing anyway
+	if (z <= 0.0f)   // at or behind the eye - caller shouldn't be drawing anyway
 		return 0.0f;
 
-	frac = (current_focal / z) - 1.0f;
-
-	if (frac > STEREO_WORLD_DEPTH_MAX)
-		frac = STEREO_WORLD_DEPTH_MAX;
-	else if (frac < -1.0f)   // unreachable for z > 0, but keep the invariant explicit
-		frac = -1.0f;
-
-	return frac;
+	return (current_convergence / z) - 1.0f;
 }
 
 fixed_t R_StereoBaseOffsetFromPixels(INT32 px)
@@ -345,19 +485,21 @@ fixed_t R_StereoBaseOffsetFromPixels(INT32 px)
 // caller adds this on top and the two together land the element at world depth.
 fixed_t R_GetStereoWorldHUDOffset(fixed_t viewdist)
 {
-	float world_frac, hud_frac, ipd;
+	float shift;
 	INT32 px;
 
 	if (!R_StereoActive() || current_eye == STEREO_EYE_MONO)
 		return 0;
-	if (cv_stereoipd.value == 0)
+	if (cv_stereosep.value == 0)
 		return 0;
 
-	world_frac = Stereo_DepthFracForDistance(viewdist);
-	hud_frac   = cv_stereohuddepth.value / 100.0f;
-	ipd        = cv_stereoipd.value * 0.1f;
-
-	px = (INT32)(-current_eye * (world_frac - hud_frac) * Stereo_PixelShiftPerEye(ipd, current_focal));
+	// Net of the flat chrome-HUD shift V_StereoHUDOffset applies separately,
+	// so the two together land the element at world depth. Each half goes
+	// through the clamp on its own, which is what keeps the safety limit a
+	// limit on where the element ENDS UP rather than on the correction.
+	shift = Stereo_ShiftPixelsForFrac(Stereo_DepthFracForDistance(viewdist))
+	      - Stereo_ShiftPixelsForFrac(Stereo_HudDepthFrac());
+	px = (INT32)shift;
 
 	return R_StereoBaseOffsetFromPixels(px);
 }

@@ -220,6 +220,7 @@ void OglSdlFinishUpdate(boolean waitvbl)
 	INT32 composite_shader = -1;
 	boolean weave = false;
 	boolean stereo_stretch;
+	boolean ghost_reduce;
 	if (oldwaitvbl != waitvbl)
 	{
 		SDL_GL_SetSwapInterval(waitvbl ? 1 : 0);
@@ -240,6 +241,8 @@ void OglSdlFinishUpdate(boolean waitvbl)
 	// the SR weaver's input, and the composite shaders' source layout.
 	stereo_stretch = R_BackbufferIsStereo();
 
+	ghost_reduce = stereo_stretch && R_StereoGhostReductionActive();
+
 	// Which display format the user asked for. Deliberately cv_stereomode and
 	// NOT R_StereoMode(): the latter has already collapsed several distinct
 	// user-facing modes down to the SbS/TaB layout they render as internally,
@@ -255,6 +258,23 @@ void OglSdlFinishUpdate(boolean waitvbl)
 			case STEREO_LEIASR:            weave = R_LeiaSR_Available();                          break;
 			default: break;
 		}
+
+		// SbS and TaB hand the display a frame that is already in its final
+		// layout, so they have no composite of their own -- and LeiaSR's
+		// composite is the weaver, which is not ours to edit. All three
+		// therefore need the passthrough shader purely to carry the ghost
+		// reduction, and only when the player has actually turned it on.
+		// Every other mode folds the remap into the composite it was already
+		// going to run, at no extra cost.
+		if (ghost_reduce && composite_shader < 0)
+			composite_shader = SHADER_STEREO_GHOST_COMPOSITE;
+
+		// Uniforms are read at draw time, so this only has to precede the
+		// composite. Pushed down even when the levers are off: the shaders
+		// early-out on the no-op values, and leaving stale values behind
+		// would apply the last frame's setting after the player turns them
+		// back off.
+		HWR_SetStereoGhostReduction(R_GetStereoGhostContrast(), R_GetStereoGhostLift());
 	}
 
 	HWR_MakeScreenFinalTexture();
@@ -274,10 +294,21 @@ void OglSdlFinishUpdate(boolean waitvbl)
 
 		if (composite_shader >= 0)
 			HWR_DrawStereoComposite(composite_shader, sdlw, sdlh);
-		else
+
+		if (weave)
 		{
+			// Ghost reduction has to happen BEFORE the weave, not after: the
+			// SR weaver runs its own crosstalk cancellation, the residual
+			// ghost on high-contrast content is that cancellation clipping,
+			// and compressing the range afterwards would be far too late to
+			// give it the headroom it ran out of. The composite above has
+			// just drawn the compressed SbS frame into the back buffer, so
+			// recapture it and let the weaver consume that instead.
+			if (composite_shader >= 0)
+				HWR_MakeScreenLeiaTextureSized(sdlw, sdlh);
+
 			// The weaver writes into the bound viewport, which after the eye
-			// loop is still the engine's render rect.
+			// loop (or the composite above) is not the full window.
 			HWR_SetPresentViewport(sdlw, sdlh);
 			R_LeiaSR_Weave(HWR_GetScreenLeiaTextureID(), sdlw, sdlh);
 		}

@@ -5728,8 +5728,8 @@ static void HWR_DrawSkyBackground(player_t *player)
 		// to a mono projection and the sky renders at exactly zero parallax,
 		// i.e. pinned to the screen plane instead of sitting at infinity.
 		dometransform.eyeOffset   = R_GetCurrentEye();
-		dometransform.iod         = R_GetStereoIOD();
-		dometransform.focalLength = R_GetStereoFocal();
+		dometransform.separation  = R_GetStereoSeparation();
+		dometransform.convergence = R_GetStereoConvergence();
 		dometransform.skyboxPass  = true;
 
 		HWR_GetTexture(texturetranslation[skytexture]);
@@ -6019,11 +6019,12 @@ void HWR_RenderSkyboxView(INT32 viewnumber, player_t *player)
 	}
 	atransform.splitscreen = splitscreen;
 	atransform.eyeOffset   = R_GetCurrentEye();
-	atransform.iod         = R_GetStereoIOD();
-	atransform.focalLength = R_GetStereoFocal();
-	// Sky at "infinity": collapsing the convergence plane makes parallax
-	// = full IPD at any distance, so the sky sits at maximum depth rather
-	// than fighting the user's IPD/focal settings.
+	atransform.separation  = R_GetStereoSeparation();
+	atransform.convergence = R_GetStereoConvergence();
+	// Sky at "infinity": skyboxPass drops the per-eye view translation and
+	// leaves only the clip-space shear, which is exactly the depth-to-infinity
+	// limit -- the sky gets the full background disparity (= separation) at
+	// any distance instead of fighting the player's convergence.
 	atransform.skyboxPass  = true;
 
 	gl_fovlud = (float)(1.0l/tan((double)(fpov*M_PIl/360l)));
@@ -6245,8 +6246,8 @@ void HWR_RenderPlayerView(INT32 viewnumber, player_t *player)
 	}
 	atransform.splitscreen = splitscreen;
 	atransform.eyeOffset   = R_GetCurrentEye();
-	atransform.iod         = R_GetStereoIOD();
-	atransform.focalLength = R_GetStereoFocal();
+	atransform.separation  = R_GetStereoSeparation();
+	atransform.convergence = R_GetStereoConvergence();
 	atransform.skyboxPass  = false;
 
 	gl_fovlud = (float)(1.0l/tan((double)(fpov*M_PIl/360l)));
@@ -6849,6 +6850,11 @@ UINT32 HWR_GetScreenLeiaTextureID(void)
 void HWR_SetPresentViewport(INT32 width, INT32 height)
 {
 	HWD.pfnSetPresentViewport(width, height);
+}
+
+void HWR_SetStereoGhostReduction(float contrast, float lift)
+{
+	HWD.pfnSetStereoGhostReduction(contrast, lift);
 }
 
 void HWR_DrawStereoComposite(INT32 shader_target, INT32 width, INT32 height)

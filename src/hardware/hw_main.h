@@ -110,7 +110,14 @@ void HWR_SetPresentViewport(INT32 width, INT32 height);
 //   SHADER_COLUMN_INTERLACED_COMPOSITE  -- SbS source -> column-interleaved
 //   SHADER_CHECKERBOARD_COMPOSITE       -- SbS source -> checkerboard
 //   SHADER_ANAGLYPH_DUBOIS_COMPOSITE    -- SbS source -> red/cyan Dubois
+//   SHADER_STEREO_GHOST_COMPOSITE       -- passthrough; carries the ghost
+//                                          reduction for SbS / TaB / LeiaSR,
+//                                          which have no composite of their
+//                                          own to fold it into
 void HWR_DrawStereoComposite(INT32 shader_target, INT32 width, INT32 height);
+// Push the ghost/crosstalk reduction levers down to the composite shaders.
+// Call before HWR_DrawStereoComposite; (1.0f, 0.0f) is the exact no-op.
+void HWR_SetStereoGhostReduction(float contrast, float lift);
 
 // This stuff is put here so models can use them
 void HWR_Lighting(FSurfaceInfo *Surface, INT32 light_level, extracolormap_t *colormap);

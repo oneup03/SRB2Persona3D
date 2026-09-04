@@ -112,6 +112,7 @@ void *hwSym(const char *funcName,void *handle)
 	GETFUNC(ResetStereoMode);
 	GETFUNC(DrawInterlacedComposite);
 	GETFUNC(SetPresentViewport);
+	GETFUNC(SetStereoGhostReduction);
 
 	GETFUNC(CompileShaders);
 	GETFUNC(CleanShaders);

@@ -1446,12 +1446,19 @@ static menuitem_t OP_Stereoscopic3DMenu[] =
 {
 	{IT_HEADER, NULL, "Stereoscopic 3D", NULL, 0},
 	{IT_STRING|IT_CVAR,               NULL, "Display Mode",      &cv_stereomode,           12},
-	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Eye Separation",    &cv_stereoipd,            22},
-	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Convergence Plane", &cv_stereofoclen,         32},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Separation",        &cv_stereosep,            22},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Convergence",       &cv_stereofoclen,         32},
 	{IT_STRING|IT_CVAR,               NULL, "Swap Eyes",         &cv_stereoswap,           42},
 
 	{IT_HEADER, NULL, "HUD Depth", NULL, 56},
 	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "HUD Depth",         &cv_stereohuddepth,       68},
+
+	// Anti-ghosting. Contrast works on any stereo display; Black Floor only
+	// helps on one that cancels crosstalk itself (the LeiaSR weaver does),
+	// where the ghost that survives is its correction clipping at black.
+	{IT_HEADER, NULL, "Ghost Reduction", NULL, 82},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Contrast",          &cv_stereoghostcontrast,  94},
+	{IT_STRING|IT_CVAR|IT_CV_SLIDER,  NULL, "Black Floor",       &cv_stereoghostlift,     104},
 };
 
 static menuitem_t OP_OpenGLOptionsMenu[] =
